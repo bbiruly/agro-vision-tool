@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { useAuth } from "@/hooks/useAuth"
 import { 
   BarChart3, 
   Leaf, 
@@ -10,12 +11,15 @@ import {
   Menu, 
   Home,
   Droplets,
-  AlertTriangle 
+  AlertTriangle,
+  LogOut,
+  User
 } from "lucide-react"
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
+  const { user, signOut } = useAuth()
 
   const navItems = [
     {
@@ -87,6 +91,25 @@ const Navigation = () => {
           </div>
           <div className="mt-8 flex-grow flex flex-col px-4">
             <NavContent />
+            {user && (
+              <div className="mt-auto pt-4 border-t">
+                <div className="flex items-center gap-3 px-3 py-2 mb-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{user.email}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={signOut}
+                  className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -110,6 +133,28 @@ const Navigation = () => {
                 <span className="ml-2 text-lg font-bold text-primary">AgriTech</span>
               </div>
               <NavContent mobile />
+              {user && (
+                <div className="mt-auto pt-4 border-t">
+                  <div className="flex items-center gap-3 px-3 py-2 mb-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{user.email}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsOpen(false);
+                      signOut();
+                    }}
+                    className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </Button>
+                </div>
+              )}
             </SheetContent>
           </Sheet>
         </div>

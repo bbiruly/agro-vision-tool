@@ -1,11 +1,16 @@
+import { useNavigate } from "react-router-dom"
 import Navigation from "@/components/Navigation"
 import Dashboard from "@/components/Dashboard"
 import { HeroButton } from "@/components/ui/hero-button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { useAuth } from "@/hooks/useAuth"
 import { Leaf, BarChart3, TrendingDown, Users } from "lucide-react"
 import heroImage from "@/assets/hero-agriculture.jpg"
 
 const Index = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-gradient-earth">
       <Navigation />
@@ -30,12 +35,20 @@ const Index = () => {
                 to boost yields while reducing environmental impact.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <HeroButton size="lg">
-                  Get Started
-                </HeroButton>
-                <HeroButton variant="outline" size="lg">
-                  View Demo
-                </HeroButton>
+                {user ? (
+                  <HeroButton size="lg" onClick={() => navigate('/fields')}>
+                    Go to Dashboard
+                  </HeroButton>
+                ) : (
+                  <>
+                    <HeroButton size="lg" onClick={() => navigate('/auth')}>
+                      Get Started
+                    </HeroButton>
+                    <HeroButton variant="outline" size="lg" onClick={() => navigate('/auth')}>
+                      Sign In
+                    </HeroButton>
+                  </>
+                )}
               </div>
             </div>
           </div>
