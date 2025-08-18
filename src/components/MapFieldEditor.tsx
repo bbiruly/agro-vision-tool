@@ -19,7 +19,7 @@ const MapFieldEditor = ({ onSave, onCancel }: MapFieldEditorProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const draw = useRef<MapboxDraw | null>(null);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken, setMapboxToken] = useState<string>(() => localStorage.getItem('mapbox_public_token') || '');
   const [fieldName, setFieldName] = useState('');
   const [cropType, setCropType] = useState('');
   const [drawnArea, setDrawnArea] = useState<number>(0);
@@ -38,17 +38,10 @@ const MapFieldEditor = ({ onSave, onCancel }: MapFieldEditorProps) => {
   ];
 
   useEffect(() => {
-    // For now, use a placeholder token - user needs to add their Mapbox token
-    const token = process.env.VITE_MAPBOX_TOKEN || '';
-    
-    if (!token) {
-      setMapboxToken('');
-      return;
-    }
-
+    if (!mapboxToken) return;
     if (!mapContainer.current) return;
 
-    mapboxgl.accessToken = token;
+    mapboxgl.accessToken = mapboxToken;
     
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -127,7 +120,7 @@ const MapFieldEditor = ({ onSave, onCancel }: MapFieldEditorProps) => {
     toast.success('Field mapped successfully!');
   };
 
-  if (!mapboxToken && !process.env.VITE_MAPBOX_TOKEN) {
+  if (!mapboxToken) {
     return (
       <div className="p-6 space-y-4">
         <div className="text-center">
@@ -159,7 +152,7 @@ const MapFieldEditor = ({ onSave, onCancel }: MapFieldEditorProps) => {
             />
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => window.location.reload()} disabled={!mapboxToken}>
+            <Button onClick={() => { localStorage.setItem('mapbox_public_token', mapboxToken); toast.success('Token saved'); }} disabled={!mapboxToken}>
               Load Map
             </Button>
             <Button variant="outline" onClick={onCancel}>
