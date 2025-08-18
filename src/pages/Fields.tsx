@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import MapFieldEditor from "@/components/MapFieldEditor"
+import EnhancedMapFieldEditor from "@/components/EnhancedMapFieldEditor"
 import { useState } from "react"
 import { 
   MapPin, 
@@ -148,9 +148,9 @@ const Fields = () => {
               </DialogTrigger>
               <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Map Your Agricultural Field</DialogTitle>
+                  <DialogTitle>Map Your Agricultural Field with Satellite Data</DialogTitle>
                 </DialogHeader>
-                <MapFieldEditor 
+                <EnhancedMapFieldEditor 
                   onSave={handleSaveField}
                   onCancel={() => setIsMapDialogOpen(false)}
                 />
