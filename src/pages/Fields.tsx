@@ -3,6 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import MapFieldEditor from "@/components/MapFieldEditor"
+import { useState } from "react"
 import { 
   MapPin, 
   Calendar, 
@@ -18,7 +21,8 @@ import {
 } from "lucide-react"
 
 const Fields = () => {
-  const fields = [
+  const [isMapDialogOpen, setIsMapDialogOpen] = useState(false)
+  const [fields, setFields] = useState([
     {
       id: 1,
       name: "North Valley Corn",
@@ -75,7 +79,27 @@ const Fields = () => {
       lastUpdate: "3 hours ago",
       notes: "Steady growth, fertilizer applied"
     }
-  ]
+  ])
+
+  const handleSaveField = (fieldData: any) => {
+    const newField = {
+      id: fields.length + 1,
+      name: fieldData.name,
+      location: `Section ${String.fromCharCode(65 + fields.length)}-${fields.length + 1}`,
+      size: `${fieldData.area} acres`,
+      crop: fieldData.crop,
+      plantedDate: fieldData.plantedDate,
+      health: fieldData.health,
+      moisture: fieldData.moisture,
+      temperature: fieldData.temperature,
+      status: fieldData.status,
+      lastUpdate: fieldData.lastUpdate,
+      notes: fieldData.notes
+    }
+    
+    setFields([...fields, newField])
+    setIsMapDialogOpen(false)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -115,10 +139,23 @@ const Fields = () => {
               <h1 className="text-3xl font-bold text-foreground">Field Management</h1>
               <p className="text-muted-foreground">Monitor and manage all your agricultural fields</p>
             </div>
-            <Button className="bg-gradient-primary text-primary-foreground hover:scale-105 shadow-medium hover:shadow-strong">
-              <Plus className="h-4 w-4 mr-2" />
-              Add New Field
-            </Button>
+            <Dialog open={isMapDialogOpen} onOpenChange={setIsMapDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-gradient-primary text-primary-foreground hover:scale-105 shadow-medium hover:shadow-strong">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add New Field
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Map Your Agricultural Field</DialogTitle>
+                </DialogHeader>
+                <MapFieldEditor 
+                  onSave={handleSaveField}
+                  onCancel={() => setIsMapDialogOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
           </div>
 
           {/* Summary Cards */}
