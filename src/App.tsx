@@ -11,6 +11,7 @@ import Fertilizer from "./pages/Fertilizer";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
+import GeospatialAnalysis from "./pages/GeospatialAnalysis";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/geospatial" element={<GeospatialAnalysis />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

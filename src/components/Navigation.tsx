@@ -13,7 +13,8 @@ import {
   Droplets,
   AlertTriangle,
   LogOut,
-  User
+  User,
+  Map
 } from "lucide-react"
 
 const Navigation = () => {
@@ -46,6 +47,11 @@ const Navigation = () => {
       name: "Alerts",
       href: "/alerts",
       icon: AlertTriangle
+    },
+    {
+      name: "Geospatial",
+      href: "/geospatial",
+      icon: Map
     },
     {
       name: "Settings",
