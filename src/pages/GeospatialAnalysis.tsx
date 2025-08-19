@@ -1,5 +1,5 @@
 import Navigation from "@/components/Navigation"
-import GeospatialDashboard from "@/components/GeospatialDashboard"
+import AgricultureGeospatialDashboard from "@/components/AgricultureGeospatialDashboard"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -186,9 +186,8 @@ const GeospatialAnalysis = () => {
           </Card>
 
           {/* Main Dashboard */}
-          <GeospatialDashboard 
+          <AgricultureGeospatialDashboard 
             boundingBox={[-95.7129, 37.0876]}
-            onDataExport={handleDataExport}
           />
 
           {/* Analysis Insights */}

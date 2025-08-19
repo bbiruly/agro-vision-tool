@@ -158,12 +158,11 @@ const EnhancedMapFieldEditor = ({ onSave, onCancel }: EnhancedMapFieldEditorProp
         // Create mock tile URL for demonstration (in real app, this would be actual satellite imagery)
         const mockTileUrl = generateMockTileUrl(layerType, selectedRegion);
         
-        // Update the source with actual data
-        map.current.getSource(`${layerType}-source`)?.setData?.({
-          type: 'raster',
-          tiles: [mockTileUrl],
-          tileSize: 256
-        });
+        // Update the source with new tiles
+        const source = map.current.getSource(`${layerType}-source`);
+        if (source && 'setTiles' in source) {
+          (source as any).setTiles([mockTileUrl]);
+        }
         
         // Add the layer
         map.current.addLayer({
