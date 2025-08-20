@@ -79,24 +79,7 @@ const EnhancedMapFieldEditor = ({ onSave, onCancel }: EnhancedMapFieldEditorProp
 
     // Initialize empty layers for satellite data
     map.current.on('load', () => {
-      // Add sources for satellite data layers (will be populated when data is loaded)
-      map.current?.addSource('sentinel2-source', {
-        type: 'raster',
-        tiles: [],
-        tileSize: 256
-      });
-      
-      map.current?.addSource('sentinel1-source', {
-        type: 'raster', 
-        tiles: [],
-        tileSize: 256
-      });
-      
-      map.current?.addSource('era5-source', {
-        type: 'raster',
-        tiles: [],
-        tileSize: 256
-      });
+      // Sources will be added dynamically when layers are toggled
     });
 
     // Calculate area and set region when drawing is created/updated
@@ -149,26 +132,30 @@ const EnhancedMapFieldEditor = ({ onSave, onCancel }: EnhancedMapFieldEditorProp
     if (!map.current || !selectedRegion) return;
 
     const layerId = `${layerType}-layer`;
+    const sourceId = `${layerType}-source`;
     
     if (visible && data) {
       // Add or show the layer
       if (map.current.getLayer(layerId)) {
         map.current.setLayoutProperty(layerId, 'visibility', 'visible');
       } else {
-        // Create mock tile URL for demonstration (in real app, this would be actual satellite imagery)
-        const mockTileUrl = generateMockTileUrl(layerType, selectedRegion);
+        // Get tile URL template from data or generate a proper template
+        const tileUrlTemplate = data?.tileUrls?.[layerType] || generateMockTileUrlTemplate(layerType);
         
-        // Update the source with new tiles
-        const source = map.current.getSource(`${layerType}-source`);
-        if (source && 'setTiles' in source) {
-          (source as any).setTiles([mockTileUrl]);
+        // Add source if it doesn't exist
+        if (!map.current.getSource(sourceId)) {
+          map.current.addSource(sourceId, {
+            type: 'raster',
+            tiles: [tileUrlTemplate],
+            tileSize: 256
+          });
         }
         
         // Add the layer
         map.current.addLayer({
           id: layerId,
           type: 'raster',
-          source: `${layerType}-source`,
+          source: sourceId,
           paint: {
             'raster-opacity': getLayerOpacity(layerType)
           }
@@ -184,20 +171,19 @@ const EnhancedMapFieldEditor = ({ onSave, onCancel }: EnhancedMapFieldEditorProp
     }
   };
 
-  const generateMockTileUrl = (layerType: string, region: any) => {
-    // In a real implementation, this would generate URLs to actual satellite tile services
-    // For now, return a placeholder that represents the concept
-    const bbox = `${region.bounds[0][0]},${region.bounds[0][1]},${region.bounds[1][0]},${region.bounds[1][1]}`;
+  const generateMockTileUrlTemplate = (layerType: string) => {
+    // Generate proper tile URL templates with {z}/{x}/{y} placeholders
+    // These are mock URLs for demonstration - in production, use real tile services
     
     switch (layerType) {
       case 'sentinel2':
-        return `https://services.sentinel-hub.com/ogc/wms/{instanceId}?REQUEST=GetMap&BBOX=${bbox}&LAYERS=NDVI&WIDTH=256&HEIGHT=256&FORMAT=image/png`;
+        return `https://example.com/sentinel2/{z}/{x}/{y}.png`;
       case 'sentinel1':
-        return `https://services.sentinel-hub.com/ogc/wms/{instanceId}?REQUEST=GetMap&BBOX=${bbox}&LAYERS=VV&WIDTH=256&HEIGHT=256&FORMAT=image/png`;
+        return `https://example.com/sentinel1/{z}/{x}/{y}.png`;
       case 'era5':
-        return `https://climate.copernicus.eu/api/v1/tiles/{z}/{x}/{y}?variable=temperature&bbox=${bbox}`;
+        return `https://example.com/era5/{z}/{x}/{y}.png`;
       default:
-        return '';
+        return `https://example.com/default/{z}/{x}/{y}.png`;
     }
   };
 
