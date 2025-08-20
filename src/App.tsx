@@ -12,6 +12,7 @@ import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import GeospatialAnalysis from "./pages/GeospatialAnalysis";
+import SatelliteMonitoring from "./pages/SatelliteMonitoring";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/geospatial" element={<GeospatialAnalysis />} />
+            <Route path="/satellite-monitoring" element={<SatelliteMonitoring />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

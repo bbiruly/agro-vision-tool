@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   LogOut,
   User,
-  Map
+  Map,
+  Satellite
 } from "lucide-react"
 
 const Navigation = () => {
@@ -52,6 +53,11 @@ const Navigation = () => {
       name: "Geospatial",
       href: "/geospatial",
       icon: Map
+    },
+    {
+      name: "Satellite Monitoring",
+      href: "/satellite-monitoring",
+      icon: Satellite
     },
     {
       name: "Settings",
