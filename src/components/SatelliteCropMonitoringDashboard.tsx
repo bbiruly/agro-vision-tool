@@ -237,7 +237,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     // Sentinel-2 NDVI Layer (Green-Red gradient for vegetation health)
     map.current.addSource('sentinel2-source', {
       type: 'geojson',
-      data: generateSentinel2Data()
+      data: generateSentinel2Data() as any
     });
 
     map.current.addLayer({
@@ -268,7 +268,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     // Sentinel-1 Radar Layer (Blue gradient for backscatter intensity)
     map.current.addSource('sentinel1-source', {
       type: 'geojson',
-      data: generateSentinel1Data()
+      data: generateSentinel1Data() as any
     });
 
     map.current.addLayer({
@@ -299,7 +299,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     // ERA5 Climate Layer (Temperature gradient with size for rainfall)
     map.current.addSource('era5-source', {
       type: 'geojson',
-      data: generateERA5Data()
+      data: generateERA5Data() as any
     });
 
     map.current.addLayer({
@@ -510,7 +510,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
             blue: Math.random() * 4000,
             nir: Math.random() * 5000,
             quality: Math.random() > 0.7 ? 'excellent' : Math.random() > 0.4 ? 'good' : 'fair'
-          };
+          } as any;
           break;
         case 'sentinel1':
           pixelData = {
@@ -519,7 +519,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
             vh: -18 + Math.random() * 12,
             ratio: Math.random() * 0.5,
             soilMoisture: Math.random() * 0.5 + 0.2
-          };
+          } as any;
           break;
         case 'era5':
           pixelData = {
@@ -528,7 +528,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
             rainfall: Math.random() * 50,
             soilMoisture: Math.random() * 0.4 + 0.3,
             humidity: 40 + Math.random() * 40
-          };
+          } as any;
           break;
       }
 
@@ -1142,19 +1142,19 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
 
                   {selectedPixelData.dataset === 'sentinel1' && (
                     <>
-                      <div class="grid grid-cols-2 gap-2">
-                        <div class="bg-muted/50 p-2 rounded">
-                          <div class="text-muted-foreground text-xs">VV Pol</div>
-                          <div class="font-semibold">{selectedPixelData.vv.toFixed(1)} dB</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-muted/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">VV Pol</div>
+                          <div className="font-semibold">{selectedPixelData.vv.toFixed(1)} dB</div>
                         </div>
-                        <div class="bg-muted/50 p-2 rounded">
-                          <div class="text-muted-foreground text-xs">VH Pol</div>
-                          <div class="font-semibold">{selectedPixelData.vh.toFixed(1)} dB</div>
+                        <div className="bg-muted/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">VH Pol</div>
+                          <div className="font-semibold">{selectedPixelData.vh.toFixed(1)} dB</div>
                         </div>
                       </div>
-                      <div class="bg-muted/50 p-2 rounded">
-                        <div class="text-muted-foreground">Soil Moisture</div>
-                        <div class="font-semibold text-lg">
+                      <div className="bg-muted/50 p-2 rounded">
+                        <div className="text-muted-foreground">Soil Moisture</div>
+                        <div className="font-semibold text-lg">
                           {selectedPixelData.soilMoisture.toFixed(3)}
                         </div>
                       </div>
@@ -1204,7 +1204,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                 <CardContent>
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      {activeDataset === 'sentinel2' && (
+                      {activeDataset === 'sentinel2' ? (
                         <AreaChart data={timeSeriesData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
                           <XAxis 
@@ -1232,9 +1232,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                             fillOpacity={0.3}
                           />
                         </AreaChart>
-                      )}
-
-                      {activeDataset === 'sentinel1' && (
+                      ) : activeDataset === 'sentinel1' ? (
                         <LineChart data={timeSeriesData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
                           <XAxis 
@@ -1261,9 +1259,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                             dot={false}
                           />
                         </LineChart>
-                      )}
-
-                      {activeDataset === 'era5' && (
+                      ) : (
                         <LineChart data={timeSeriesData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
                           <XAxis 

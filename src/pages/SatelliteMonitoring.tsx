@@ -1,9 +1,12 @@
 import Navigation from "@/components/Navigation"
 import SatelliteCropMonitoringDashboard from "@/components/SatelliteCropMonitoringDashboard"
+import LocationSearchField from "@/components/LocationSearchField"
+import MapAreaSelector from "@/components/MapAreaSelector"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useState } from "react"
 import { 
   Satellite, 
@@ -15,11 +18,19 @@ import {
   Eye,
   Settings,
   Layers,
-  Activity
+  Activity,
+  Search,
+  Square
 } from "lucide-react"
 
 const SatelliteMonitoring = () => {
   const [selectedFieldId, setSelectedFieldId] = useState('field-1');
+  const [currentLocation, setCurrentLocation] = useState<{lat: number; lng: number; name: string} | null>(null);
+  const [selectedArea, setSelectedArea] = useState<any>(null);
+  const [mapboxToken, setMapboxToken] = useState<string>(() => 
+    localStorage.getItem('mapbox_public_token') || ''
+  );
+  const [activeTab, setActiveTab] = useState<'predefined' | 'custom'>('predefined');
   
   // Sample field data
   const fields = [
@@ -49,7 +60,62 @@ const SatelliteMonitoring = () => {
     }
   ];
 
-  const selectedField = fields.find(f => f.id === selectedFieldId);
+  const selectedField = activeTab === 'predefined' 
+    ? fields.find(f => f.id === selectedFieldId)
+    : selectedArea ? {
+        id: 'custom-area',
+        name: `Custom Area (${currentLocation?.name || 'Selected Location'})`,
+        bounds: selectedArea.bounds,
+        center: selectedArea.center,
+        area: selectedArea.area / 4047, // Convert m² to acres
+        crop: 'Mixed'
+      } : null;
+
+  const handleLocationSelect = (location: {lat: number; lng: number; name: string}) => {
+    setCurrentLocation(location);
+  };
+
+  const handleAreaSelect = (area: any) => {
+    setSelectedArea(area);
+  };
+
+  if (!mapboxToken) {
+    return (
+      <div className="min-h-screen bg-gradient-earth">
+        <Navigation />
+        <div className="md:pl-64">
+          <div className="p-6">
+            <Card className="shadow-elegant max-w-md mx-auto">
+              <CardContent className="p-6 text-center">
+                <Satellite className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-semibold mb-2">Mapbox Token Required</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Please add your Mapbox public token to access the satellite monitoring features.
+                </p>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Enter Mapbox token..."
+                    className="w-full p-3 border rounded-lg"
+                    onChange={(e) => {
+                      setMapboxToken(e.target.value);
+                      localStorage.setItem('mapbox_public_token', e.target.value);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Get your token from{' '}
+                    <a href="https://mapbox.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      mapbox.com
+                    </a>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-earth">
@@ -61,28 +127,84 @@ const SatelliteMonitoring = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold text-foreground">Satellite Crop Monitoring</h1>
-              <p className="text-muted-foreground">Multi-source satellite data visualization for precision agriculture</p>
+              <p className="text-muted-foreground">Multi-source satellite data visualization with location search and custom area selection</p>
             </div>
-            <div className="flex gap-2">
-              <Select value={selectedFieldId} onValueChange={setSelectedFieldId}>
-                <SelectTrigger className="w-48">
-                  <MapPin className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {fields.map(field => (
-                    <SelectItem key={field.id} value={field.id}>
-                      {field.name} ({field.area} acres)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline">
-                <Settings className="h-4 w-4 mr-2" />
-                Configure
-              </Button>
-            </div>
+            <Button variant="outline">
+              <Settings className="h-4 w-4 mr-2" />
+              Configure
+            </Button>
           </div>
+
+          {/* Location Search and Area Selection */}
+          <Card className="shadow-medium">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5 text-primary" />
+                Location & Area Selection
+              </CardTitle>
+              <CardDescription>Search for a location and select an area for satellite analysis</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'predefined' | 'custom')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="predefined" className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Predefined Fields
+                  </TabsTrigger>
+                  <TabsTrigger value="custom" className="flex items-center gap-2">
+                    <Square className="h-4 w-4" />
+                    Custom Area
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="predefined" className="space-y-4">
+                  <div className="flex gap-2">
+                    <Select value={selectedFieldId} onValueChange={setSelectedFieldId}>
+                      <SelectTrigger className="w-full">
+                        <MapPin className="h-4 w-4 mr-2" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {fields.map(field => (
+                          <SelectItem key={field.id} value={field.id}>
+                            {field.name} ({field.area} acres) - {field.crop}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="custom" className="space-y-4">
+                  <div className="space-y-4">
+                    <LocationSearchField
+                      onLocationSelect={handleLocationSelect}
+                      placeholder="Search for a location to analyze..."
+                    />
+                    
+                    {currentLocation && (
+                      <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                        <div className="flex items-center gap-2 text-sm">
+                          <MapPin className="h-4 w-4 text-primary" />
+                          <span className="font-medium">Selected Location:</span>
+                          <span>{currentLocation.name}</span>
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                            {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <MapAreaSelector
+                      location={currentLocation}
+                      onAreaSelect={handleAreaSelect}
+                      mapboxToken={mapboxToken}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
 
           {/* Field Information */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -226,7 +348,21 @@ const SatelliteMonitoring = () => {
           </Card>
 
           {/* Main Dashboard */}
-          <SatelliteCropMonitoringDashboard selectedField={selectedField} />
+          {selectedField && (
+            <SatelliteCropMonitoringDashboard selectedField={selectedField} />
+          )}
+          
+          {!selectedField && activeTab === 'custom' && (
+            <Card className="shadow-medium">
+              <CardContent className="p-12 text-center">
+                <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-semibold mb-2">No Area Selected</h3>
+                <p className="text-muted-foreground">
+                  Please search for a location and select an area on the map to view satellite data visualizations.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Monitoring Insights */}
           <Card className="shadow-medium">
