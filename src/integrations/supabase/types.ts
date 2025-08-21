@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      monitoring_fields: {
+        Row: {
+          area_sqm: number | null
+          bounds: Json
+          center: Json
+          created_at: string | null
+          crop_type: string | null
+          id: string
+          last_update: string | null
+          monitoring_active: boolean | null
+          name: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          area_sqm?: number | null
+          bounds: Json
+          center: Json
+          created_at?: string | null
+          crop_type?: string | null
+          id?: string
+          last_update?: string | null
+          monitoring_active?: boolean | null
+          name: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          area_sqm?: number | null
+          bounds?: Json
+          center?: Json
+          created_at?: string | null
+          crop_type?: string | null
+          id?: string
+          last_update?: string | null
+          monitoring_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -41,6 +83,51 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      satellite_data: {
+        Row: {
+          acquisition_date: string
+          area_sqm: number | null
+          bounds: Json
+          center: Json
+          created_at: string | null
+          data_payload: Json
+          id: string
+          processing_status: string | null
+          region_name: string
+          satellite_type: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          acquisition_date: string
+          area_sqm?: number | null
+          bounds: Json
+          center: Json
+          created_at?: string | null
+          data_payload: Json
+          id?: string
+          processing_status?: string | null
+          region_name: string
+          satellite_type: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          acquisition_date?: string
+          area_sqm?: number | null
+          bounds?: Json
+          center?: Json
+          created_at?: string | null
+          data_payload?: Json
+          id?: string
+          processing_status?: string | null
+          region_name?: string
+          satellite_type?: string
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }

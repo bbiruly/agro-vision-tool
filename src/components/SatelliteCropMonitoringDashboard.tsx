@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { useRealtimeSatelliteData } from '@/hooks/useRealtimeSatelliteData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +51,15 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     localStorage.getItem('mapbox_public_token') || ''
   );
   
+  // Use real-time satellite data hook
+  const { 
+    satelliteData, 
+    isLoading: dataLoading, 
+    isConnected, 
+    fetchSatelliteData,
+    getLatestData 
+  } = useRealtimeSatelliteData();
+  
   // Active dataset selection
   const [activeDataset, setActiveDataset] = useState<'sentinel2' | 'sentinel1' | 'era5'>('sentinel2');
   
@@ -84,6 +94,13 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
 
   const [selectedDate, setSelectedDate] = useState('Aug 16, 2025');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Get real-time data for the selected field
+  const realtimeData = {
+    sentinel2: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'sentinel-2') : null,
+    sentinel1: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'sentinel-1') : null,
+    era5: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'era5') : null
+  };
 
   // Generate realistic time series data
   useEffect(() => {
@@ -336,6 +353,26 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
   };
 
   const generateSentinel2Data = () => {
+    // Use real-time data if available
+    if (realtimeData.sentinel2?.data_payload?.ndvi?.pixels) {
+      const pixels = realtimeData.sentinel2.data_payload.ndvi.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: pixel.coordinates
+          },
+          properties: {
+            ndvi: pixel.ndvi,
+            date: selectedDate,
+            quality: pixel.quality || (pixel.ndvi > 0.6 ? 'excellent' : pixel.ndvi > 0.4 ? 'good' : 'poor')
+          }
+        }))
+      };
+    }
+
     if (!selectedField) {
       // Default data for demo
       return {
@@ -387,6 +424,27 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
   };
 
   const generateSentinel1Data = () => {
+    // Use real-time data if available
+    if (realtimeData.sentinel1?.data_payload?.backscatter?.pixels) {
+      const pixels = realtimeData.sentinel1.data_payload.backscatter.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: pixel.coordinates
+          },
+          properties: {
+            backscatter: pixel.vv || pixel.backscatter || -12,
+            polarization: 'VV+VH',
+            date: selectedDate,
+            soilMoisture: pixel.soil_moisture || Math.random() * 0.5 + 0.2
+          }
+        }))
+      };
+    }
+
     if (!selectedField) {
       return {
         type: 'FeatureCollection',
@@ -436,6 +494,27 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
   };
 
   const generateERA5Data = () => {
+    // Use real-time data if available
+    if (realtimeData.era5?.data_payload?.climate?.pixels) {
+      const pixels = realtimeData.era5.data_payload.climate.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: pixel.coordinates
+          },
+          properties: {
+            temperature: pixel.temperature,
+            rainfall: pixel.rainfall,
+            soilMoisture: pixel.soil_moisture,
+            date: selectedDate
+          }
+        }))
+      };
+    }
+
     if (!selectedField) {
       return {
         type: 'FeatureCollection',
