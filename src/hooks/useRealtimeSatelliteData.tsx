@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { copernicusApiService } from '@/services/copernicusApiService';
 
 export interface SatelliteDataPoint {
   id: string;
@@ -34,7 +35,30 @@ export const useRealtimeSatelliteData = () => {
   const [monitoringFields, setMonitoringFields] = useState<MonitoringField[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState({
+    openAccessHub: false,
+    sentinelHub: false,
+    climateDataStore: false
+  });
   const { toast } = useToast();
+
+  // Check Copernicus service status on mount
+  useEffect(() => {
+    const checkServices = async () => {
+      try {
+        const status = await copernicusApiService.checkServiceStatus();
+        setServiceStatus(status);
+        console.log('Copernicus service status:', status);
+      } catch (error) {
+        console.error('Error checking service status:', error);
+      }
+    };
+    
+    checkServices();
+    // Check service status every 5 minutes
+    const interval = setInterval(checkServices, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch initial data
   const fetchInitialData = useCallback(async () => {
@@ -132,7 +156,7 @@ export const useRealtimeSatelliteData = () => {
             setSatelliteData(prev => [newData, ...prev]);
             toast({
               title: "New Satellite Data",
-              description: `New ${payload.new.satellite_type} data received for ${payload.new.region_name}`,
+              description: `Live ${payload.new.satellite_type} data from Copernicus for ${payload.new.region_name}`,
             });
           } else if (payload.eventType === 'UPDATE') {
             const updatedData = {
@@ -148,7 +172,7 @@ export const useRealtimeSatelliteData = () => {
             if (payload.new.processing_status === 'completed') {
               toast({
                 title: "Data Processing Complete",
-                description: `${payload.new.satellite_type} data for ${payload.new.region_name} is ready`,
+                description: `Live ${payload.new.satellite_type} data processed for ${payload.new.region_name}`,
               });
             }
           } else if (payload.eventType === 'DELETE') {
@@ -293,13 +317,61 @@ export const useRealtimeSatelliteData = () => {
     satelliteTypes: string[] = ['sentinel-2', 'sentinel-1', 'era5']
   ) => {
     try {
+      // First, try to fetch from Copernicus services directly
+      const endDate = new Date().toISOString().split('T')[0];
+      const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      const query = {
+        bounds,
+        startDate,
+        endDate,
+        maxCloudCover: 30
+      };
+
+      // Fetch from Copernicus services if available
+      if (serviceStatus.openAccessHub && satelliteTypes.includes('sentinel-2')) {
+        try {
+          const sentinel2Products = await copernicusApiService.searchSentinel2Products(query);
+          if (sentinel2Products.length > 0) {
+            const processedData = await copernicusApiService.processSatelliteData(sentinel2Products, 'sentinel-2');
+            console.log('Fetched live Sentinel-2 data:', processedData);
+          }
+        } catch (error) {
+          console.error('Error fetching live Sentinel-2 data:', error);
+        }
+      }
+
+      if (serviceStatus.openAccessHub && satelliteTypes.includes('sentinel-1')) {
+        try {
+          const sentinel1Products = await copernicusApiService.searchSentinel1Products(query);
+          if (sentinel1Products.length > 0) {
+            const processedData = await copernicusApiService.processSatelliteData(sentinel1Products, 'sentinel-1');
+            console.log('Fetched live Sentinel-1 data:', processedData);
+          }
+        } catch (error) {
+          console.error('Error fetching live Sentinel-1 data:', error);
+        }
+      }
+
+      if (serviceStatus.climateDataStore && satelliteTypes.includes('era5')) {
+        try {
+          const era5Data = await copernicusApiService.fetchERA5ClimateData(query);
+          console.log('Fetched live ERA5 data:', era5Data);
+        } catch (error) {
+          console.error('Error fetching live ERA5 data:', error);
+        }
+      }
+
+      // Fallback to edge function for processing and storage
       const { data, error } = await supabase.functions.invoke('satellite-data-fetcher', {
         body: {
           region_name: regionName,
           bounds,
           center,
           area_sqm: areaSqm,
-          satellite_types: satelliteTypes
+          satellite_types: satelliteTypes,
+          use_live_api: true,
+          service_status: serviceStatus
         }
       });
 
@@ -307,15 +379,15 @@ export const useRealtimeSatelliteData = () => {
         console.error('Error fetching satellite data:', error);
         toast({
           title: "Error",
-          description: "Failed to fetch satellite data",
+          description: "Failed to fetch live satellite data from Copernicus",
           variant: "destructive"
         });
         return false;
       }
 
       toast({
-        title: "Data Fetch Started",
-        description: `Fetching satellite data for ${regionName}`,
+        title: "Live Data Fetch Started",
+        description: `Fetching live Copernicus data for ${regionName}`,
       });
       
       return true;
@@ -323,12 +395,12 @@ export const useRealtimeSatelliteData = () => {
       console.error('Error in fetchSatelliteData:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch satellite data",
+        description: "Failed to fetch live satellite data",
         variant: "destructive"
       });
       return false;
     }
-  }, [toast]);
+  }, [toast, serviceStatus]);
 
   // Get latest data for a specific region and satellite type
   const getLatestData = useCallback((regionName: string, satelliteType: string) => {
@@ -342,6 +414,7 @@ export const useRealtimeSatelliteData = () => {
     monitoringFields,
     isLoading,
     isConnected,
+    serviceStatus,
     startMonitoring,
     stopMonitoring,
     fetchSatelliteData,
