@@ -413,12 +413,14 @@ export class CopernicusApiService {
       climateDataStore: false
     };
 
+    console.log('🔍 Checking Copernicus service availability...');
     try {
       // Check Open Access Hub
       const oahResponse = await fetch(`${this.config.openAccessHub.baseUrl}/search?q=*&rows=1`, {
         method: 'HEAD'
       });
       status.openAccessHub = oahResponse.ok;
+      console.log(`Open Access Hub: ${status.openAccessHub ? '✅ Online' : '❌ Offline'}`);
     } catch (error) {
       console.error('Open Access Hub check failed:', error);
     }
@@ -429,6 +431,7 @@ export class CopernicusApiService {
         method: 'HEAD'
       });
       status.sentinelHub = shResponse.ok;
+      console.log(`Sentinel Hub: ${status.sentinelHub ? '✅ Online' : '❌ Offline'}`);
     } catch (error) {
       console.error('Sentinel Hub check failed:', error);
     }
@@ -439,10 +442,12 @@ export class CopernicusApiService {
         method: 'HEAD'
       });
       status.climateDataStore = cdsResponse.ok;
+      console.log(`Climate Data Store: ${status.climateDataStore ? '✅ Online' : '❌ Offline'}`);
     } catch (error) {
       console.error('Climate Data Store check failed:', error);
     }
 
+    console.log('📊 Copernicus service status check complete:', status);
     return status;
   }
 

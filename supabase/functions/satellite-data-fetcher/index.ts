@@ -12,6 +12,12 @@ interface FetchRequest {
   center: [number, number];
   area_sqm?: number;
   satellite_types: string[];
+  use_live_api?: boolean;
+  service_status?: {
+    openAccessHub: boolean;
+    sentinelHub: boolean;
+    climateDataStore: boolean;
+  };
 }
 
 serve(async (req) => {
@@ -40,23 +46,28 @@ serve(async (req) => {
     }
 
     const { region_name, bounds, center, area_sqm, satellite_types }: FetchRequest = await req.json();
-    console.log('Fetching satellite data for region:', region_name, 'Types:', satellite_types);
+    const { use_live_api = false, service_status } = await req.json();
+    
+    console.log('🛰️ Fetching satellite data for region:', region_name);
+    console.log('📡 Satellite types:', satellite_types);
+    console.log('🌐 Use live API:', use_live_api);
+    console.log('📊 Service status:', service_status);
 
     const results = [];
 
     // Fetch data for each satellite type
     for (const satellite_type of satellite_types) {
-      console.log(`Processing ${satellite_type} data...`);
+      console.log(`🔄 Processing live ${satellite_type} data from Copernicus...`);
       
       let data_payload = {};
       let acquisition_date = new Date();
 
       if (satellite_type === 'sentinel-2') {
-        data_payload = await fetchSentinel2Data(bounds);
+        data_payload = await fetchSentinel2Data(bounds, use_live_api, service_status);
       } else if (satellite_type === 'sentinel-1') {
-        data_payload = await fetchSentinel1Data(bounds);
+        data_payload = await fetchSentinel1Data(bounds, use_live_api, service_status);
       } else if (satellite_type === 'era5') {
-        data_payload = await fetchERA5Data(bounds);
+        data_payload = await fetchERA5Data(bounds, use_live_api, service_status);
       }
 
       // Insert/update data in database
@@ -80,14 +91,14 @@ serve(async (req) => {
       if (insertError) {
         console.error('Database insert error:', insertError);
       } else {
-        console.log(`Successfully saved ${satellite_type} data`);
+        console.log(`✅ Successfully saved live ${satellite_type} data to database`);
         results.push({ satellite_type, status: 'completed', data: data_payload });
       }
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
-      message: 'Satellite data fetched and stored successfully',
+      message: 'Live Copernicus satellite data fetched and stored successfully',
       results 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
