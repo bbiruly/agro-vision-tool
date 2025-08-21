@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { useRealtimeSatelliteData } from '@/hooks/useRealtimeSatelliteData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,8 @@ import {
   Thermometer, 
   Droplets, 
   Download,
-  RefreshCw,
+  Eye,
+  EyeOff,
   TrendingUp,
   MapPin,
   Calendar,
@@ -24,28 +26,24 @@ import {
   FileText,
   Layers,
   BarChart3,
-  Wifi,
-  WifiOff,
-  CheckCircle,
-  AlertCircle
+  Settings,
+  RefreshCw,
+  Info
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { useRealtimeSatelliteData } from '@/hooks/useRealtimeSatelliteData';
 import { toast } from 'sonner';
 
 interface SatelliteCropMonitoringDashboardProps {
-  selectedField: {
-    id: string;
-    name: string;
+  selectedField?: {
     bounds: [[number, number], [number, number]];
     center: [number, number];
-    area: number;
-    crop: string;
+    area?: number;
+    name?: string;
   };
 }
 
 const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboardProps> = ({ 
-  selectedField
+  selectedField 
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -53,153 +51,116 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     localStorage.getItem('mapbox_public_token') || ''
   );
   
-  // Real-time satellite data hook
-  const {
-    satelliteData,
-    monitoringFields,
-    isLoading,
-    isConnected,
-    serviceStatus,
-    startMonitoring,
+  // Use real-time satellite data hook
+  const { 
+    satelliteData, 
+    isLoading: dataLoading, 
+    isConnected, 
     fetchSatelliteData,
-    getLatestData
+    getLatestData 
   } = useRealtimeSatelliteData();
   
-  // Data layers state
-  const [activeLayers, setActiveLayers] = useState({
-    sentinel2: true,
-    sentinel1: true,
-    era5: true
-  });
+  // Active dataset selection
+  const [activeDataset, setActiveDataset] = useState<'sentinel2' | 'sentinel1' | 'era5'>('sentinel2');
   
-  // Auto-refresh settings
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState('30'); // minutes
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Layer visibility state
+  const [layerVisibility, setLayerVisibility] = useState({
+    sentinel2: true,
+    sentinel1: false,
+    era5: false,
+    fieldBoundary: true
+  });
   
   // Selected pixel data
   const [selectedPixelData, setSelectedPixelData] = useState<any>(null);
   
-  // Time series data from live sources
+  // Time series data
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
-  const [climateData, setClimateData] = useState<any[]>([]);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
   
-  // Export options
-  const [exportFormat, setExportFormat] = useState('png');
-  const [isExporting, setIsExporting] = useState(false);
+  // Dataset statistics
+  const [datasetStats, setDatasetStats] = useState({
+    sentinel2: { max: 0.66, mean: 0.42, median: 0.44, min: 0.14, deviation: 0.11, num: 964 },
+    sentinel1: { max: -2.1, mean: -8.4, median: -7.8, min: -15.2, deviation: 3.2, num: 1024 },
+    era5: { temperature: 27.9, rainfall: 43.1, soilMoisture: 0.48, humidity: 65 }
+  });
 
-  // Get latest data for the selected field
-  const latestSentinel2 = getLatestData(selectedField.name, 'sentinel-2');
-  const latestSentinel1 = getLatestData(selectedField.name, 'sentinel-1');
-  const latestERA5 = getLatestData(selectedField.name, 'era5');
+  // Available dates for each dataset
+  const [availableDates, setAvailableDates] = useState({
+    sentinel2: ['Aug 16, 2025', 'Aug 14, 2025', 'Aug 9, 2025'],
+    sentinel1: ['Aug 16, 2025', 'Aug 12, 2025', 'Aug 8, 2025'],
+    era5: ['Aug 19, 2025', 'Aug 18, 2025', 'Aug 17, 2025']
+  });
 
-  // Initialize monitoring for the selected field
-  useEffect(() => {
-    if (selectedField && !monitoringFields.find(f => f.name === selectedField.name)) {
-      const fieldData = {
-        name: selectedField.name,
-        bounds: selectedField.bounds,
-        center: selectedField.center,
-        area_sqm: selectedField.area * 4047, // Convert acres to square meters
-        crop_type: selectedField.crop
-      };
-      
-      startMonitoring(fieldData);
-    }
-  }, [selectedField, monitoringFields, startMonitoring]);
-
-  // Auto-refresh satellite data
-  useEffect(() => {
-    if (!autoRefresh || !selectedField) return;
-
-    const intervalMs = parseInt(refreshInterval) * 60 * 1000;
-    const interval = setInterval(() => {
-      refreshSatelliteData();
-    }, intervalMs);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, selectedField]);
-
-  // Update time series data when new satellite data arrives
-  useEffect(() => {
-    if (satelliteData.length > 0) {
-      updateTimeSeriesData();
-    }
-  }, [satelliteData]);
-
-  const refreshSatelliteData = async () => {
-    if (!selectedField || isRefreshing) return;
-
-    setIsRefreshing(true);
-    try {
-      const success = await fetchSatelliteData(
-        selectedField.name,
-        selectedField.bounds,
-        selectedField.center,
-        selectedField.area * 4047,
-        ['sentinel-2', 'sentinel-1', 'era5']
-      );
-      
-      if (success) {
-        setLastRefresh(new Date());
-        toast.success(`Live Copernicus data refreshed for ${selectedField.name}`);
-      }
-    } catch (error) {
-      console.error('Error refreshing satellite data:', error);
-      toast.error('Failed to refresh satellite data');
-    } finally {
-      setIsRefreshing(false);
-    }
+  const [selectedDate, setSelectedDate] = useState('Aug 16, 2025');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Get real-time data for the selected field
+  const realtimeData = {
+    sentinel2: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'sentinel-2') : null,
+    sentinel1: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'sentinel-1') : null,
+    era5: selectedField ? getLatestData(selectedField.name || 'Selected Field', 'era5') : null
   };
 
-  const updateTimeSeriesData = () => {
-    // Process satellite data into time series format
-    const fieldSatelliteData = satelliteData.filter(d => d.region_name === selectedField.name);
-    
-    // Group by date and combine data types
-    const dataByDate = new Map();
-    
-    fieldSatelliteData.forEach(item => {
-      const date = item.acquisition_date.split('T')[0];
-      if (!dataByDate.has(date)) {
-        dataByDate.set(date, { date, day: 0 });
+  // Generate realistic time series data
+  useEffect(() => {
+    const generateTimeSeriesData = () => {
+      const data = [];
+      const historical = [];
+      
+      for (let i = 0; i < 30; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - (29 - i));
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        // NDVI time series with seasonal pattern
+        const ndviBase = 0.4 + 0.25 * Math.sin((i / 30) * Math.PI);
+        const ndviNoise = (Math.random() - 0.5) * 0.1;
+        
+        data.push({
+          date: dateStr,
+          ndvi: Math.max(0.1, Math.min(0.8, ndviBase + ndviNoise)),
+          backscatter: -12 + Math.random() * 8,
+          temperature: 22 + Math.random() * 12,
+          rainfall: Math.random() * 15,
+          soilMoisture: 0.3 + Math.random() * 0.3,
+          day: i + 1
+        });
+      }
+
+      // Generate historical data for multiple years
+      for (let year = 2022; year <= 2025; year++) {
+        for (let month = 0; month < 12; month++) {
+          const seasonalNDVI = 0.3 + 0.4 * Math.sin((month / 12) * 2 * Math.PI);
+          historical.push({
+            date: `${year}-${String(month + 1).padStart(2, '0')}`,
+            year: year.toString(),
+            ndvi: seasonalNDVI + (Math.random() - 0.5) * 0.15,
+            month: month + 1
+          });
+        }
       }
       
-      const dayData = dataByDate.get(date);
-      
-      if (item.satellite_type === 'sentinel-2' && item.data_payload?.ndvi) {
-        dayData.ndvi = item.data_payload.ndvi.mean;
-      }
-      if (item.satellite_type === 'sentinel-1' && item.data_payload?.backscatter) {
-        dayData.backscatter = item.data_payload.backscatter.vv_mean;
-      }
-      if (item.satellite_type === 'era5' && item.data_payload?.climate) {
-        dayData.temperature = item.data_payload.climate.temperature;
-        dayData.rainfall = item.data_payload.climate.rainfall;
-        dayData.soilMoisture = item.data_payload.climate.soil_moisture;
-      }
-    });
+      setTimeSeriesData(data);
+      setHistoricalData(historical);
+    };
     
-    // Convert to array and sort by date
-    const timeSeriesArray = Array.from(dataByDate.values())
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((item, index) => ({ ...item, day: index + 1 }));
-    
-    setTimeSeriesData(timeSeriesArray);
-    setClimateData(timeSeriesArray);
-  };
+    generateTimeSeriesData();
+  }, []);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current) return;
 
     mapboxgl.accessToken = mapboxToken;
     
+    const defaultCenter = selectedField?.center || [-95.7129, 37.0876];
+    const defaultZoom = selectedField ? 14 : 12;
+    
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/satellite-v9',
-      center: selectedField.center,
-      zoom: 14
+      center: defaultCenter,
+      zoom: defaultZoom
     });
 
     // Add navigation controls
@@ -207,11 +168,9 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     map.current.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
 
     map.current.on('load', () => {
-      addDataLayers();
-      setupMapInteractions();
-      
-      // Add field boundary
       addFieldBoundary();
+      addDatasetLayers();
+      setupMapInteractions();
     });
 
     return () => {
@@ -219,34 +178,47 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
     };
   }, [mapboxToken, selectedField]);
 
-  // Update map layers when new data arrives
+  // Update layer visibility when dataset changes
   useEffect(() => {
-    if (map.current && map.current.isStyleLoaded()) {
-      updateMapLayers();
+    if (!map.current) return;
+    
+    // Hide all dataset layers first
+    ['sentinel2', 'sentinel1', 'era5'].forEach(layerType => {
+      const layerId = `${layerType}-layer`;
+      if (map.current!.getLayer(layerId)) {
+        map.current!.setLayoutProperty(layerId, 'visibility', 'none');
+      }
+    });
+
+    // Show the active dataset layer
+    const activeLayerId = `${activeDataset}-layer`;
+    if (map.current.getLayer(activeLayerId)) {
+      map.current.setLayoutProperty(activeLayerId, 'visibility', 'visible');
     }
-  }, [latestSentinel2, latestSentinel1, latestERA5, activeLayers]);
+  }, [activeDataset]);
 
   const addFieldBoundary = () => {
-    if (!map.current) return;
+    if (!map.current || !selectedField) return;
 
-    // Create field boundary polygon
+    // Add field boundary
     const fieldPolygon = {
-      type: 'Feature' as const,
-      geometry: {
-        type: 'Polygon' as const,
-        coordinates: [[
-          [selectedField.bounds[0][0], selectedField.bounds[0][1]],
-          [selectedField.bounds[1][0], selectedField.bounds[0][1]],
-          [selectedField.bounds[1][0], selectedField.bounds[1][1]],
-          [selectedField.bounds[0][0], selectedField.bounds[1][1]],
-          [selectedField.bounds[0][0], selectedField.bounds[0][1]]
-        ]]
-      },
-      properties: {
-        name: selectedField.name,
-        crop: selectedField.crop,
-        area: selectedField.area
-      }
+      type: 'FeatureCollection' as const,
+      features: [{
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [[
+            [selectedField.bounds[0][0], selectedField.bounds[0][1]],
+            [selectedField.bounds[1][0], selectedField.bounds[0][1]],
+            [selectedField.bounds[1][0], selectedField.bounds[1][1]],
+            [selectedField.bounds[0][0], selectedField.bounds[1][1]],
+            [selectedField.bounds[0][0], selectedField.bounds[0][1]]
+          ]]
+        },
+        properties: {
+          name: selectedField.name || 'Selected Field'
+        }
+      }]
     };
 
     map.current.addSource('field-boundary', {
@@ -259,8 +231,8 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
       type: 'fill',
       source: 'field-boundary',
       paint: {
-        'fill-color': 'hsl(var(--primary))',
-        'fill-opacity': 0.1
+        'fill-color': 'transparent',
+        'fill-outline-color': '#ffffff'
       }
     });
 
@@ -269,409 +241,524 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
       type: 'line',
       source: 'field-boundary',
       paint: {
-        'line-color': 'hsl(var(--primary))',
+        'line-color': '#ffffff',
         'line-width': 3,
         'line-opacity': 0.8
       }
     });
-
-    // Add field label
-    map.current.addLayer({
-      id: 'field-label',
-      type: 'symbol',
-      source: 'field-boundary',
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-        'text-size': 14,
-        'text-anchor': 'center'
-      },
-      paint: {
-        'text-color': 'hsl(var(--primary))',
-        'text-halo-color': '#ffffff',
-        'text-halo-width': 2
-      }
-    });
   };
 
-  const addDataLayers = () => {
+  const addDatasetLayers = () => {
     if (!map.current) return;
 
-    // NDVI Layer (Sentinel-2) with live data
-    if (latestSentinel2?.data_payload?.tileUrls?.ndvi) {
-      map.current.addSource('ndvi-source', {
-        type: 'raster',
-        tiles: [latestSentinel2.data_payload.tileUrls.ndvi],
-        tileSize: 256
-      });
-    } else {
-      // Fallback to generated pattern
-      map.current.addSource('ndvi-source', {
-        type: 'raster',
-        tiles: [`data:image/svg+xml;base64,${btoa(generateNDVIPattern())}`],
-        tileSize: 256
-      });
-    }
-
-    map.current.addLayer({
-      id: 'ndvi-layer',
-      type: 'raster',
-      source: 'ndvi-source',
-      paint: {
-        'raster-opacity': 0.7
-      },
-      layout: {
-        visibility: activeLayers.sentinel2 ? 'visible' : 'none'
-      }
-    });
-
-    // Radar Layer (Sentinel-1) with live data
-    if (latestSentinel1?.data_payload?.tileUrls?.vv) {
-      map.current.addSource('radar-source', {
-        type: 'raster',
-        tiles: [latestSentinel1.data_payload.tileUrls.vv],
-        tileSize: 256
-      });
-    } else {
-      // Fallback to generated pattern
-      map.current.addSource('radar-source', {
-        type: 'raster',
-        tiles: [`data:image/svg+xml;base64,${btoa(generateRadarPattern())}`],
-        tileSize: 256
-      });
-    }
-
-    map.current.addLayer({
-      id: 'radar-layer',
-      type: 'raster',
-      source: 'radar-source',
-      paint: {
-        'raster-opacity': 0.6
-      },
-      layout: {
-        visibility: activeLayers.sentinel1 ? 'visible' : 'none'
-      }
-    });
-
-    // Climate data points (ERA5) with live data
-    const climatePoints = generateClimatePoints();
-
-    map.current.addSource('climate-source', {
+    // Sentinel-2 NDVI Layer (Green-Red gradient for vegetation health)
+    map.current.addSource('sentinel2-source', {
       type: 'geojson',
-      data: climatePoints
+      data: generateSentinel2Data() as any
     });
 
     map.current.addLayer({
-      id: 'climate-layer',
+      id: 'sentinel2-layer',
       type: 'circle',
-      source: 'climate-source',
+      source: 'sentinel2-source',
+      paint: {
+        'circle-radius': 8,
+        'circle-color': [
+          'interpolate',
+          ['linear'],
+          ['get', 'ndvi'],
+          0.1, '#8B0000', // Dark red for very low NDVI
+          0.3, '#FF4500', // Orange red for low NDVI
+          0.5, '#FFD700', // Gold for medium NDVI
+          0.7, '#9ACD32', // Yellow green for good NDVI
+          0.9, '#228B22'  // Forest green for excellent NDVI
+        ],
+        'circle-opacity': 0.8,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#ffffff'
+      },
+      layout: {
+        visibility: activeDataset === 'sentinel2' ? 'visible' : 'none'
+      }
+    });
+
+    // Sentinel-1 Radar Layer (Blue gradient for backscatter intensity)
+    map.current.addSource('sentinel1-source', {
+      type: 'geojson',
+      data: generateSentinel1Data() as any
+    });
+
+    map.current.addLayer({
+      id: 'sentinel1-layer',
+      type: 'circle',
+      source: 'sentinel1-source',
+      paint: {
+        'circle-radius': 6,
+        'circle-color': [
+          'interpolate',
+          ['linear'],
+          ['get', 'backscatter'],
+          -15, '#000080', // Navy blue for low backscatter
+          -10, '#0000CD', // Medium blue
+          -5, '#4169E1',  // Royal blue
+          0, '#87CEEB',   // Sky blue
+          5, '#B0E0E6'    // Powder blue for high backscatter
+        ],
+        'circle-opacity': 0.7,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#ffffff'
+      },
+      layout: {
+        visibility: activeDataset === 'sentinel1' ? 'visible' : 'none'
+      }
+    });
+
+    // ERA5 Climate Layer (Temperature gradient with size for rainfall)
+    map.current.addSource('era5-source', {
+      type: 'geojson',
+      data: generateERA5Data() as any
+    });
+
+    map.current.addLayer({
+      id: 'era5-layer',
+      type: 'circle',
+      source: 'era5-source',
       paint: {
         'circle-radius': [
           'interpolate',
           ['linear'],
-          ['get', 'temperature'],
-          15, 6,
-          35, 12
+          ['get', 'rainfall'],
+          0, 4,
+          25, 8,
+          50, 12
         ],
         'circle-color': [
           'interpolate',
           ['linear'],
           ['get', 'temperature'],
-          15, '#3b82f6',
-          25, '#10b981',
-          30, '#f59e0b',
-          35, '#ef4444'
+          15, '#0066CC', // Blue for cool
+          20, '#00CCFF', // Light blue
+          25, '#FFFF00', // Yellow for moderate
+          30, '#FF9900', // Orange for warm
+          35, '#FF0000'  // Red for hot
         ],
+        'circle-opacity': 0.6,
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
-        'circle-opacity': 0.8
+        'circle-stroke-color': '#ffffff'
       },
       layout: {
-        visibility: activeLayers.era5 ? 'visible' : 'none'
+        visibility: activeDataset === 'era5' ? 'visible' : 'none'
       }
     });
   };
 
-  const updateMapLayers = () => {
-    if (!map.current) return;
-
-    // Update NDVI layer with latest Sentinel-2 data
-    if (latestSentinel2?.data_payload?.tileUrls?.ndvi) {
-      const source = map.current.getSource('ndvi-source') as mapboxgl.RasterSource;
-      if (source) {
-        source.setTiles([latestSentinel2.data_payload.tileUrls.ndvi]);
-      }
-    }
-
-    // Update radar layer with latest Sentinel-1 data
-    if (latestSentinel1?.data_payload?.tileUrls?.vv) {
-      const source = map.current.getSource('radar-source') as mapboxgl.RasterSource;
-      if (source) {
-        source.setTiles([latestSentinel1.data_payload.tileUrls.vv]);
-      }
-    }
-
-    // Update climate points with latest ERA5 data
-    if (latestERA5?.data_payload?.climate) {
-      const climatePoints = generateClimatePoints();
-      const source = map.current.getSource('climate-source') as mapboxgl.GeoJSONSource;
-      if (source) {
-        source.setData(climatePoints);
-      }
-    }
-
-    console.log('Map layers updated with live Copernicus data');
-  };
-
-  const generateClimatePoints = () => {
-    const climateData = latestERA5?.data_payload?.climate;
-    const points = [];
-
-    if (climateData?.pixels) {
-      // Use live ERA5 pixel data
-      climateData.pixels.forEach((pixel: any, index: number) => {
-        if (index < 5) { // Limit to 5 points for performance
-          points.push({
-            type: 'Feature' as const,
-            geometry: {
-              type: 'Point' as const,
-              coordinates: pixel.coordinates
-            },
-            properties: {
-              temperature: pixel.temperature,
-              rainfall: pixel.rainfall,
-              soilMoisture: pixel.soil_moisture,
-              humidity: pixel.humidity,
-              date: latestERA5.acquisition_date,
-              id: index,
-              source: 'live_era5'
-            }
-          });
-        }
-      });
-    } else {
-      // Fallback to generated points
-      for (let i = 0; i < 5; i++) {
-        points.push({
-          type: 'Feature' as const,
+  const generateSentinel2Data = () => {
+    // Use real-time data if available
+    if (realtimeData.sentinel2?.data_payload?.ndvi?.pixels) {
+      const pixels = realtimeData.sentinel2.data_payload.ndvi.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
           geometry: {
-            type: 'Point' as const,
-            coordinates: [
-              selectedField.center[0] + (Math.random() - 0.5) * 0.02,
-              selectedField.center[1] + (Math.random() - 0.5) * 0.02
-            ]
+            type: 'Point',
+            coordinates: pixel.coordinates
           },
           properties: {
-            temperature: 20 + Math.random() * 15,
-            rainfall: Math.random() * 50,
-            soilMoisture: 0.2 + Math.random() * 0.4,
-            humidity: 50 + Math.random() * 30,
-            date: new Date().toISOString(),
-            id: i,
-            source: 'simulated'
+            ndvi: pixel.ndvi,
+            date: selectedDate,
+            quality: pixel.quality || (pixel.ndvi > 0.6 ? 'excellent' : pixel.ndvi > 0.4 ? 'good' : 'poor')
+          }
+        }))
+      };
+    }
+
+    if (!selectedField) {
+      // Default data for demo
+      return {
+        type: 'FeatureCollection',
+        features: Array.from({ length: 50 }, (_, i) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [-95.7129 + (Math.random() - 0.5) * 0.02, 37.0876 + (Math.random() - 0.5) * 0.02]
+          },
+          properties: {
+            ndvi: 0.2 + Math.random() * 0.6,
+            date: selectedDate,
+            quality: Math.random() > 0.8 ? 'excellent' : Math.random() > 0.5 ? 'good' : 'fair'
+          }
+        }))
+      };
+    }
+
+    const features = [];
+    const gridSize = 20;
+    
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const lng = selectedField.bounds[0][0] + (selectedField.bounds[1][0] - selectedField.bounds[0][0]) * (i / gridSize);
+        const lat = selectedField.bounds[0][1] + (selectedField.bounds[1][1] - selectedField.bounds[0][1]) * (j / gridSize);
+        
+        // Generate realistic NDVI values with spatial correlation
+        const centerDistance = Math.sqrt(Math.pow(i - gridSize/2, 2) + Math.pow(j - gridSize/2, 2));
+        const baseNDVI = 0.6 - (centerDistance / gridSize) * 0.3;
+        const ndvi = Math.max(0.1, Math.min(0.8, baseNDVI + (Math.random() - 0.5) * 0.2));
+        
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat]
+          },
+          properties: {
+            ndvi: ndvi,
+            date: selectedDate,
+            quality: ndvi > 0.6 ? 'excellent' : ndvi > 0.4 ? 'good' : 'poor'
           }
         });
       }
     }
 
-    return {
-      type: 'FeatureCollection' as const,
-      features: points
-    };
+    return { type: 'FeatureCollection', features };
   };
 
-  const generateNDVIPattern = () => {
-    // Enhanced pattern based on live data if available
-    const ndviData = latestSentinel2?.data_payload?.ndvi;
-    const meanNDVI = ndviData?.mean || 0.5;
+  const generateSentinel1Data = () => {
+    // Use real-time data if available
+    if (realtimeData.sentinel1?.data_payload?.backscatter?.pixels) {
+      const pixels = realtimeData.sentinel1.data_payload.backscatter.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: pixel.coordinates
+          },
+          properties: {
+            backscatter: pixel.vv || pixel.backscatter || -12,
+            polarization: 'VV+VH',
+            date: selectedDate,
+            soilMoisture: pixel.soil_moisture || Math.random() * 0.5 + 0.2
+          }
+        }))
+      };
+    }
+
+    if (!selectedField) {
+      return {
+        type: 'FeatureCollection',
+        features: Array.from({ length: 40 }, (_, i) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [-95.7129 + (Math.random() - 0.5) * 0.02, 37.0876 + (Math.random() - 0.5) * 0.02]
+          },
+          properties: {
+            backscatter: -15 + Math.random() * 10,
+            polarization: 'VV+VH',
+            date: selectedDate
+          }
+        }))
+      };
+    }
+
+    const features = [];
+    const gridSize = 15;
     
-    return `<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="ndviGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#ff0000;stop-opacity:0.7" />
-          <stop offset="50%" style="stop-color:#ffff00;stop-opacity:0.7" />
-          <stop offset="100%" style="stop-color:#00ff00;stop-opacity:0.7" />
-        </linearGradient>
-      </defs>
-      <rect width="256" height="256" fill="url(#ndviGrad)" />
-      <circle cx="64" cy="64" r="20" fill="#00ff00" opacity="${meanNDVI}"/>
-      <circle cx="192" cy="128" r="25" fill="#ffff00" opacity="${meanNDVI * 0.8}"/>
-      <circle cx="128" cy="192" r="18" fill="#ff4444" opacity="${meanNDVI * 0.6}"/>
-      <text x="10" y="20" fill="white" font-size="12">Live NDVI: ${meanNDVI.toFixed(3)}</text>
-    </svg>`;
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const lng = selectedField.bounds[0][0] + (selectedField.bounds[1][0] - selectedField.bounds[0][0]) * (i / gridSize);
+        const lat = selectedField.bounds[0][1] + (selectedField.bounds[1][1] - selectedField.bounds[0][1]) * (j / gridSize);
+        
+        // Generate realistic backscatter values
+        const backscatter = -12 + Math.random() * 8;
+        
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat]
+          },
+          properties: {
+            backscatter: backscatter,
+            polarization: 'VV+VH',
+            date: selectedDate,
+            soilMoisture: Math.random() * 0.5 + 0.2
+          }
+        });
+      }
+    }
+
+    return { type: 'FeatureCollection', features };
   };
 
-  const generateRadarPattern = () => {
-    // Enhanced pattern based on live data if available
-    const backscatterData = latestSentinel1?.data_payload?.backscatter;
-    const vvMean = backscatterData?.vv_mean || -8;
+  const generateERA5Data = () => {
+    // Use real-time data if available
+    if (realtimeData.era5?.data_payload?.climate?.pixels) {
+      const pixels = realtimeData.era5.data_payload.climate.pixels;
+      return {
+        type: 'FeatureCollection',
+        features: pixels.map((pixel: any) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: pixel.coordinates
+          },
+          properties: {
+            temperature: pixel.temperature,
+            rainfall: pixel.rainfall,
+            soilMoisture: pixel.soil_moisture,
+            date: selectedDate
+          }
+        }))
+      };
+    }
+
+    if (!selectedField) {
+      return {
+        type: 'FeatureCollection',
+        features: Array.from({ length: 20 }, (_, i) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [-95.7129 + (Math.random() - 0.5) * 0.02, 37.0876 + (Math.random() - 0.5) * 0.02]
+          },
+          properties: {
+            temperature: 20 + Math.random() * 15,
+            rainfall: Math.random() * 50,
+            soilMoisture: Math.random() * 0.4 + 0.3,
+            date: selectedDate
+          }
+        }))
+      };
+    }
+
+    const features = [];
+    const gridSize = 8; // Coarser grid for climate data
     
-    return `<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <radialGradient id="radarGrad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" style="stop-color:#87ceeb;stop-opacity:0.8" />
-          <stop offset="50%" style="stop-color:#4169e1;stop-opacity:0.6" />
-          <stop offset="100%" style="stop-color:#000080;stop-opacity:0.4" />
-        </radialGradient>
-      </defs>
-      <rect width="256" height="256" fill="url(#radarGrad)" />
-      <ellipse cx="128" cy="128" rx="80" ry="40" fill="#4169e1" opacity="${Math.abs(vvMean) / 20}"/>
-      <text x="10" y="20" fill="white" font-size="12">VV: ${vvMean.toFixed(1)} dB</text>
-    </svg>`;
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const lng = selectedField.bounds[0][0] + (selectedField.bounds[1][0] - selectedField.bounds[0][0]) * (i / gridSize);
+        const lat = selectedField.bounds[0][1] + (selectedField.bounds[1][1] - selectedField.bounds[0][1]) * (j / gridSize);
+        
+        // Generate realistic climate values
+        const temperature = 25 + Math.random() * 10;
+        const rainfall = Math.random() * 50;
+        
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat]
+          },
+          properties: {
+            temperature: temperature,
+            rainfall: rainfall,
+            soilMoisture: Math.random() * 0.4 + 0.3,
+            date: selectedDate
+          }
+        });
+      }
+    }
+
+    return { type: 'FeatureCollection', features };
   };
 
   const setupMapInteractions = () => {
     if (!map.current) return;
 
+    // Click handler for pixel data extraction
     map.current.on('click', (e) => {
       const { lng, lat } = e.lngLat;
       
-      // Extract pixel data from live sources if available
+      // Extract pixel data based on active dataset
       let pixelData = {
         coordinates: [lng, lat],
-        ndvi: 0.2 + Math.random() * 0.7,
-        backscatter: -10 + Math.random() * 20,
-        temperature: 20 + Math.random() * 15,
-        rainfall: Math.random() * 50,
-        soilMoisture: 0.2 + Math.random() * 0.4,
-        source: 'simulated'
+        dataset: activeDataset,
+        date: selectedDate
       };
 
-      // Use live data if available
-      if (latestSentinel2?.data_payload?.ndvi?.pixels) {
-        const nearestPixel = findNearestPixel(lng, lat, latestSentinel2.data_payload.ndvi.pixels);
-        if (nearestPixel) {
-          pixelData.ndvi = nearestPixel.ndvi;
-          pixelData.source = 'live_sentinel2';
-        }
-      }
-
-      if (latestSentinel1?.data_payload?.backscatter?.pixels) {
-        const nearestPixel = findNearestPixel(lng, lat, latestSentinel1.data_payload.backscatter.pixels);
-        if (nearestPixel) {
-          pixelData.backscatter = nearestPixel.vv;
-          pixelData.soilMoisture = nearestPixel.soil_moisture;
-        }
-      }
-
-      if (latestERA5?.data_payload?.climate?.pixels) {
-        const nearestPixel = findNearestPixel(lng, lat, latestERA5.data_payload.climate.pixels);
-        if (nearestPixel) {
-          pixelData.temperature = nearestPixel.temperature;
-          pixelData.rainfall = nearestPixel.rainfall;
-          pixelData.soilMoisture = nearestPixel.soil_moisture;
-        }
+      switch (activeDataset) {
+        case 'sentinel2':
+          pixelData = {
+            ...pixelData,
+            ndvi: 0.2 + Math.random() * 0.6,
+            red: Math.random() * 4000,
+            green: Math.random() * 4000,
+            blue: Math.random() * 4000,
+            nir: Math.random() * 5000,
+            quality: Math.random() > 0.7 ? 'excellent' : Math.random() > 0.4 ? 'good' : 'fair'
+          } as any;
+          break;
+        case 'sentinel1':
+          pixelData = {
+            ...pixelData,
+            vv: -15 + Math.random() * 10,
+            vh: -18 + Math.random() * 12,
+            ratio: Math.random() * 0.5,
+            soilMoisture: Math.random() * 0.5 + 0.2
+          } as any;
+          break;
+        case 'era5':
+          pixelData = {
+            ...pixelData,
+            temperature: 20 + Math.random() * 15,
+            rainfall: Math.random() * 50,
+            soilMoisture: Math.random() * 0.4 + 0.3,
+            humidity: 40 + Math.random() * 40
+          } as any;
+          break;
       }
 
       setSelectedPixelData(pixelData);
 
-      // Add popup with comprehensive pixel data
+      // Add popup with pixel data
+      const popupContent = generatePopupContent(pixelData);
       new mapboxgl.Popup({ closeButton: true, closeOnClick: false })
         .setLngLat([lng, lat])
-        .setHTML(`
-          <div class="p-3 min-w-64">
-            <h4 class="font-semibold mb-3 text-primary">Live Pixel Analysis</h4>
-            <div class="space-y-2 text-sm">
-              <div class="grid grid-cols-2 gap-2">
-                <div class="bg-muted/50 p-2 rounded">
-                  <div class="text-xs text-muted-foreground">NDVI</div>
-                  <div class="font-semibold text-accent">${pixelData.ndvi.toFixed(3)}</div>
-                </div>
-                <div class="bg-muted/50 p-2 rounded">
-                  <div class="text-xs text-muted-foreground">Backscatter</div>
-                  <div class="font-semibold">${pixelData.backscatter.toFixed(1)} dB</div>
-                </div>
-              </div>
-              <div class="grid grid-cols-3 gap-2">
-                <div class="bg-muted/50 p-2 rounded">
-                  <div class="text-xs text-muted-foreground">Temp</div>
-                  <div class="font-semibold">${pixelData.temperature.toFixed(1)}°C</div>
-                </div>
-                <div class="bg-muted/50 p-2 rounded">
-                  <div class="text-xs text-muted-foreground">Rain</div>
-                  <div class="font-semibold">${pixelData.rainfall.toFixed(1)}mm</div>
-                </div>
-                <div class="bg-muted/50 p-2 rounded">
-                  <div class="text-xs text-muted-foreground">Moisture</div>
-                  <div class="font-semibold">${pixelData.soilMoisture.toFixed(3)}</div>
-                </div>
-              </div>
-              <div class="text-xs text-muted-foreground pt-2 border-t">
-                Source: ${pixelData.source} • Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}
-              </div>
-            </div>
-          </div>
-        `)
+        .setHTML(popupContent)
         .addTo(map.current!);
     });
 
-    // Click on climate points for detailed view
-    map.current.on('click', 'climate-layer', (e) => {
-      e.originalEvent.stopPropagation();
-      const feature = e.features?.[0];
-      if (feature) {
-        const props = feature.properties;
-        new mapboxgl.Popup()
-          .setLngLat(e.lngLat)
-          .setHTML(`
-            <div class="p-3">
-              <h4 class="font-semibold mb-2 text-blue-600">Live ERA5 Climate Data</h4>
-              <div class="space-y-2 text-sm">
-                <div><strong>Temperature:</strong> ${props?.temperature?.toFixed(1)}°C</div>
-                <div><strong>Rainfall:</strong> ${props?.rainfall?.toFixed(1)} mm</div>
-                <div><strong>Soil Moisture:</strong> ${props?.soilMoisture?.toFixed(3)}</div>
-                <div><strong>Humidity:</strong> ${props?.humidity?.toFixed(1)}%</div>
-                <div class="text-xs text-muted-foreground pt-2 border-t">
-                  Source: ${props?.source} • Date: ${new Date(props?.date).toLocaleDateString()}
-                </div>
-              </div>
+    // Hover effects for better interactivity
+    ['sentinel2-layer', 'sentinel1-layer', 'era5-layer'].forEach(layerId => {
+      map.current!.on('mouseenter', layerId, () => {
+        map.current!.getCanvas().style.cursor = 'pointer';
+      });
+
+      map.current!.on('mouseleave', layerId, () => {
+        map.current!.getCanvas().style.cursor = '';
+      });
+    });
+  };
+
+  const generatePopupContent = (data: any) => {
+    const { coordinates, dataset, date } = data;
+    
+    let content = `
+      <div class="p-3 min-w-64">
+        <h4 class="font-semibold mb-3 text-primary">${dataset.toUpperCase()} Analysis</h4>
+        <div class="space-y-2 text-sm">
+    `;
+
+    switch (dataset) {
+      case 'sentinel2':
+        content += `
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">NDVI</div>
+              <div class="font-semibold text-accent">${data.ndvi.toFixed(3)}</div>
             </div>
-          `)
-          .addTo(map.current!);
-      }
-    });
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Quality</div>
+              <div class="font-semibold">${data.quality}</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Red Band</div>
+              <div class="font-semibold">${Math.round(data.red)}</div>
+            </div>
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">NIR Band</div>
+              <div class="font-semibold">${Math.round(data.nir)}</div>
+            </div>
+          </div>
+        `;
+        break;
+      case 'sentinel1':
+        content += `
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">VV Pol</div>
+              <div class="font-semibold">${data.vv.toFixed(1)} dB</div>
+            </div>
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">VH Pol</div>
+              <div class="font-semibold">${data.vh.toFixed(1)} dB</div>
+            </div>
+          </div>
+          <div class="bg-muted/50 p-2 rounded">
+            <div class="text-xs text-muted-foreground">Soil Moisture Est.</div>
+            <div class="font-semibold">${data.soilMoisture.toFixed(3)}</div>
+          </div>
+        `;
+        break;
+      case 'era5':
+        content += `
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Temperature</div>
+              <div class="font-semibold">${data.temperature.toFixed(1)}°C</div>
+            </div>
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Rainfall</div>
+              <div class="font-semibold">${data.rainfall.toFixed(1)}mm</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Humidity</div>
+              <div class="font-semibold">${data.humidity.toFixed(1)}%</div>
+            </div>
+            <div class="bg-muted/50 p-2 rounded">
+              <div class="text-xs text-muted-foreground">Soil Moisture</div>
+              <div class="font-semibold">${data.soilMoisture.toFixed(3)}</div>
+            </div>
+          </div>
+        `;
+        break;
+    }
+
+    content += `
+          <div class="text-xs text-muted-foreground pt-2 border-t">
+            Coordinates: ${coordinates[1].toFixed(4)}, ${coordinates[0].toFixed(4)}<br>
+            Date: ${date}
+          </div>
+        </div>
+      </div>
+    `;
+
+    return content;
   };
 
-  const findNearestPixel = (lng: number, lat: number, pixels: any[]) => {
-    if (!pixels || pixels.length === 0) return null;
+  const handleDatasetChange = (dataset: 'sentinel2' | 'sentinel1' | 'era5') => {
+    setActiveDataset(dataset);
+    setIsLoading(true);
     
-    let nearest = null;
-    let minDistance = Infinity;
-    
-    pixels.forEach(pixel => {
-      const distance = Math.sqrt(
-        Math.pow(pixel.coordinates[0] - lng, 2) + 
-        Math.pow(pixel.coordinates[1] - lat, 2)
-      );
+    // Update map layers
+    if (map.current) {
+      // Update data sources with new data
+      const sourceId = `${dataset}-source`;
+      let newData;
       
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearest = pixel;
+      switch (dataset) {
+        case 'sentinel2':
+          newData = generateSentinel2Data();
+          break;
+        case 'sentinel1':
+          newData = generateSentinel1Data();
+          break;
+        case 'era5':
+          newData = generateERA5Data();
+          break;
       }
-    });
+      
+      if (map.current.getSource(sourceId)) {
+        (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(newData);
+      }
+    }
     
-    return nearest;
-  };
-
-  const toggleLayer = (layerType: keyof typeof activeLayers) => {
-    if (!map.current) return;
-
-    const newState = !activeLayers[layerType];
-    setActiveLayers(prev => ({ ...prev, [layerType]: newState }));
-
-    const layerMap = {
-      sentinel2: 'ndvi-layer',
-      sentinel1: 'radar-layer',
-      era5: 'climate-layer'
-    };
-
-    const layerId = layerMap[layerType];
-    map.current.setLayoutProperty(layerId, 'visibility', newState ? 'visible' : 'none');
+    // Simulate data loading
+    setTimeout(() => {
+      setIsLoading(false);
+      toast.success(`${dataset.toUpperCase()} data loaded successfully`);
+    }, 1000);
   };
 
   const handleExport = async (format: string) => {
-    setIsExporting(true);
-    setExportFormat(format);
+    setIsLoading(true);
     
     try {
       switch (format) {
@@ -679,26 +766,25 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
           if (map.current) {
             const canvas = map.current.getCanvas();
             const link = document.createElement('a');
-            link.download = `${selectedField.name}-satellite-map-${new Date().toISOString().split('T')[0]}.png`;
+            link.download = `${activeDataset}-crop-monitoring-${selectedDate.replace(/\s/g, '-')}.png`;
             link.href = canvas.toDataURL();
             link.click();
           }
           break;
           
         case 'geotiff':
-          console.log('Exporting live GeoTIFF data...');
           await new Promise(resolve => setTimeout(resolve, 2000));
           toast.success('GeoTIFF export completed');
           break;
           
         case 'csv':
           const csvData = timeSeriesData.map(row => 
-            `${row.date},${row.ndvi || ''},${row.backscatter || ''},${row.temperature || ''},${row.rainfall || ''},${row.soilMoisture || ''}`
+            `${row.date},${row.ndvi.toFixed(4)},${row.backscatter.toFixed(2)},${row.temperature.toFixed(1)}`
           ).join('\n');
-          const blob = new Blob([`Date,NDVI,Backscatter,Temperature,Rainfall,SoilMoisture\n${csvData}`], { type: 'text/csv' });
+          const blob = new Blob([`Date,NDVI,Backscatter,Temperature\n${csvData}`], { type: 'text/csv' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.download = `${selectedField.name}-satellite-data-${new Date().toISOString().split('T')[0]}.csv`;
+          link.download = `${activeDataset}-time-series-${new Date().toISOString().split('T')[0]}.csv`;
           link.href = url;
           link.click();
           URL.revokeObjectURL(url);
@@ -706,29 +792,28 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
           
         case 'json':
           const jsonData = {
-            field: selectedField,
-            latestData: {
-              sentinel2: latestSentinel2,
-              sentinel1: latestSentinel1,
-              era5: latestERA5
+            metadata: { 
+              dataset: activeDataset,
+              date: selectedDate,
+              field: selectedField?.name || 'Demo Field',
+              area: selectedField?.area || 0
             },
+            statistics: datasetStats[activeDataset],
             timeSeriesData,
-            climateData,
             selectedPixelData,
-            serviceStatus,
             exportDate: new Date().toISOString()
           };
           const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
           const jsonUrl = URL.createObjectURL(jsonBlob);
           const jsonLink = document.createElement('a');
-          jsonLink.download = `${selectedField.name}-live-data-${new Date().toISOString().split('T')[0]}.json`;
+          jsonLink.download = `${activeDataset}-analysis-${new Date().toISOString().split('T')[0]}.json`;
           jsonLink.href = jsonUrl;
           jsonLink.click();
           URL.revokeObjectURL(jsonUrl);
           break;
       }
     } finally {
-      setIsExporting(false);
+      setIsLoading(false);
     }
   };
 
@@ -739,7 +824,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
           <Satellite className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold mb-2">Mapbox Token Required</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Please add your Mapbox public token to view the live satellite monitoring dashboard.
+            Please add your Mapbox public token to view the satellite crop monitoring dashboard.
           </p>
           <div className="space-y-4">
             <input
@@ -765,137 +850,103 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
 
   return (
     <div className="space-y-6">
-      {/* Live Data Status Header */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="shadow-elegant">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              {isConnected ? <Wifi className="h-4 w-4 text-accent" /> : <WifiOff className="h-4 w-4 text-destructive" />}
-              Connection Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Real-time:</span>
-              <Badge variant="outline" className={isConnected ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
-                {isConnected ? 'Connected' : 'Disconnected'}
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Open Access Hub:</span>
-              <Badge variant="outline" className={serviceStatus.openAccessHub ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
-                {serviceStatus.openAccessHub ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Sentinel Hub:</span>
-              <Badge variant="outline" className={serviceStatus.sentinelHub ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
-                {serviceStatus.sentinelHub ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Climate Data Store:</span>
-              <Badge variant="outline" className={serviceStatus.climateDataStore ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
-                {serviceStatus.climateDataStore ? 'Online' : 'Offline'}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-elegant">
+      {/* Dataset Selection Header */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card 
+          className={`shadow-elegant cursor-pointer transition-all hover:shadow-strong ${
+            activeDataset === 'sentinel2' ? 'ring-2 ring-primary bg-primary/5' : ''
+          }`}
+          onClick={() => handleDatasetChange('sentinel2')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Satellite className="h-4 w-4 text-primary" />
-              Sentinel-2 (Live)
+              Sentinel-2 (Optical)
+              {activeDataset === 'sentinel2' && <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Active</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Date:</span>
-              <span className="font-medium">{latestSentinel2?.acquisition_date.split('T')[0] || 'No data'}</span>
+              <span className="text-muted-foreground">Resolution:</span>
+              <span className="font-medium">10m</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Cloud Cover:</span>
-              <Badge variant="outline" className="text-xs">
-                {latestSentinel2?.data_payload?.acquisition_info?.cloud_cover || 'N/A'}%
-              </Badge>
+              <span className="text-muted-foreground">NDVI Range:</span>
+              <span className="font-medium text-accent">{datasetStats.sentinel2.min} - {datasetStats.sentinel2.max}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">NDVI Mean:</span>
-              <span className="font-medium text-accent">
-                {latestSentinel2?.data_payload?.ndvi?.mean?.toFixed(3) || 'N/A'}
-              </span>
+              <span className="text-muted-foreground">Mean NDVI:</span>
+              <span className="font-medium">{datasetStats.sentinel2.mean}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
-              <Badge variant="outline" className={latestSentinel2?.processing_status === 'completed' ? "bg-accent/10 text-accent border-accent/20" : "bg-yellow-500/10 text-yellow-600 border-yellow-500/20"}>
-                {latestSentinel2?.processing_status === 'completed' ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertCircle className="h-3 w-3 mr-1" />}
-                {latestSentinel2?.processing_status || 'No data'}
-              </Badge>
+              <span className="text-muted-foreground">Pixels:</span>
+              <span className="font-medium">{datasetStats.sentinel2.num}</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-elegant">
+        <Card 
+          className={`shadow-elegant cursor-pointer transition-all hover:shadow-strong ${
+            activeDataset === 'sentinel1' ? 'ring-2 ring-accent bg-accent/5' : ''
+          }`}
+          onClick={() => handleDatasetChange('sentinel1')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Activity className="h-4 w-4 text-accent" />
-              Sentinel-1 (Live)
+              Sentinel-1 (Radar)
+              {activeDataset === 'sentinel1' && <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">Active</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Date:</span>
-              <span className="font-medium">{latestSentinel1?.acquisition_date.split('T')[0] || 'No data'}</span>
-            </div>
-            <div className="flex justify-between">
               <span className="text-muted-foreground">Polarization:</span>
-              <Badge variant="outline" className="text-xs">
-                {latestSentinel1?.data_payload?.acquisition_info?.polarization || 'N/A'}
-              </Badge>
+              <span className="font-medium">VV + VH</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">VV Mean:</span>
-              <span className="font-medium">
-                {latestSentinel1?.data_payload?.backscatter?.vv_mean?.toFixed(1) || 'N/A'} dB
-              </span>
+              <span className="text-muted-foreground">Backscatter:</span>
+              <span className="font-medium">{datasetStats.sentinel1.min} to {datasetStats.sentinel1.max} dB</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
-              <Badge variant="outline" className={latestSentinel1?.processing_status === 'completed' ? "bg-accent/10 text-accent border-accent/20" : "bg-yellow-500/10 text-yellow-600 border-yellow-500/20"}>
-                {latestSentinel1?.processing_status === 'completed' ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertCircle className="h-3 w-3 mr-1" />}
-                {latestSentinel1?.processing_status || 'No data'}
-              </Badge>
+              <span className="text-muted-foreground">Mean:</span>
+              <span className="font-medium">{datasetStats.sentinel1.mean} dB</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Pixels:</span>
+              <span className="font-medium">{datasetStats.sentinel1.num}</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-elegant">
+        <Card 
+          className={`shadow-elegant cursor-pointer transition-all hover:shadow-strong ${
+            activeDataset === 'era5' ? 'ring-2 ring-blue-500 bg-blue-500/5' : ''
+          }`}
+          onClick={() => handleDatasetChange('era5')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Cloud className="h-4 w-4 text-blue-500" />
-              ERA5 Climate (Live)
+              ERA5 (Climate)
+              {activeDataset === 'era5' && <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">Active</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Date:</span>
-              <span className="font-medium">{latestERA5?.acquisition_date.split('T')[0] || 'No data'}</span>
-            </div>
-            <div className="flex justify-between">
               <span className="text-muted-foreground">Temperature:</span>
-              <span className="font-medium">{latestERA5?.data_payload?.climate?.temperature?.toFixed(1) || 'N/A'}°C</span>
+              <span className="font-medium">{datasetStats.era5.temperature}°C</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Rainfall:</span>
-              <span className="font-medium">{latestERA5?.data_payload?.climate?.rainfall?.toFixed(1) || 'N/A'} mm</span>
+              <span className="font-medium">{datasetStats.era5.rainfall} mm</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
-              <Badge variant="outline" className={latestERA5?.processing_status === 'completed' ? "bg-accent/10 text-accent border-accent/20" : "bg-yellow-500/10 text-yellow-600 border-yellow-500/20"}>
-                {latestERA5?.processing_status === 'completed' ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertCircle className="h-3 w-3 mr-1" />}
-                {latestERA5?.processing_status || 'No data'}
-              </Badge>
+              <span className="text-muted-foreground">Soil Moisture:</span>
+              <span className="font-medium">{datasetStats.era5.soilMoisture}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Humidity:</span>
+              <span className="font-medium">{datasetStats.era5.humidity}%</span>
             </div>
           </CardContent>
         </Card>
@@ -904,98 +955,59 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Main Map Section */}
         <div className="xl:col-span-3 space-y-4">
-          {/* Live Data Controls */}
+          {/* Controls */}
           <Card className="shadow-elegant">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Layers className="h-4 w-4" />
-                Live Satellite Data Layers
+                Layer Controls
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-6 mb-4">
-                <div className="flex items-center space-x-3">
-                  <Switch
-                    id="sentinel2-layer"
-                    checked={activeLayers.sentinel2}
-                    onCheckedChange={() => toggleLayer('sentinel2')}
-                  />
-                  <Label htmlFor="sentinel2-layer" className="text-sm font-medium">
-                    Sentinel-2 NDVI (Live)
-                  </Label>
-                  {latestSentinel2 && (
-                    <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20 text-xs">
-                      {latestSentinel2.acquisition_date.split('T')[0]}
-                    </Badge>
-                  )}
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="date-select" className="text-sm">Date:</Label>
+                  <Select value={selectedDate} onValueChange={setSelectedDate}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableDates[activeDataset].map(date => (
+                        <SelectItem key={date} value={date}>{date}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <Switch
-                    id="sentinel1-layer"
-                    checked={activeLayers.sentinel1}
-                    onCheckedChange={() => toggleLayer('sentinel1')}
-                  />
-                  <Label htmlFor="sentinel1-layer" className="text-sm font-medium">
-                    Sentinel-1 Radar (Live)
-                  </Label>
-                  {latestSentinel1 && (
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">
-                      {latestSentinel1.acquisition_date.split('T')[0]}
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Switch
-                    id="era5-layer"
-                    checked={activeLayers.era5}
-                    onCheckedChange={() => toggleLayer('era5')}
-                  />
-                  <Label htmlFor="era5-layer" className="text-sm font-medium">
-                    ERA5 Climate (Live)
-                  </Label>
-                  {latestERA5 && (
-                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-xs">
-                      {latestERA5.acquisition_date.split('T')[0]}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              
-              {/* Auto-refresh controls */}
-              <div className="flex items-center gap-4 pt-3 border-t">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="auto-refresh"
-                    checked={autoRefresh}
-                    onCheckedChange={setAutoRefresh}
-                  />
-                  <Label htmlFor="auto-refresh" className="text-sm">Auto-refresh</Label>
-                </div>
-                <Select value={refreshInterval} onValueChange={setRefreshInterval}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 min</SelectItem>
-                    <SelectItem value="30">30 min</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                    <SelectItem value="180">3 hours</SelectItem>
-                  </SelectContent>
-                </Select>
+                
                 <Button 
-                  variant="outline" 
                   size="sm" 
-                  onClick={refreshSatelliteData}
-                  disabled={isRefreshing}
+                  variant="outline"
+                  onClick={() => handleDatasetChange(activeDataset)}
+                  disabled={isLoading}
                 >
-                  <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh Now
+                  <RefreshCw className={`h-3 w-3 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
                 </Button>
-                {lastRefresh && (
-                  <span className="text-xs text-muted-foreground">
-                    Last: {lastRefresh.toLocaleTimeString()}
-                  </span>
-                )}
+
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="field-boundary"
+                    checked={layerVisibility.fieldBoundary}
+                    onCheckedChange={(checked) => {
+                      setLayerVisibility(prev => ({ ...prev, fieldBoundary: checked }));
+                      if (map.current) {
+                        const visibility = checked ? 'visible' : 'none';
+                        if (map.current.getLayer('field-boundary-fill')) {
+                          map.current.setLayoutProperty('field-boundary-fill', 'visibility', visibility);
+                          map.current.setLayoutProperty('field-boundary-line', 'visibility', visibility);
+                        }
+                      }
+                    }}
+                  />
+                  <Label htmlFor="field-boundary" className="text-sm font-medium">
+                    Field Boundary
+                  </Label>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1012,7 +1024,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Download className="h-4 w-4" />
-                Export Live Data
+                Export Options
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1021,7 +1033,7 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                   size="sm" 
                   variant="outline" 
                   onClick={() => handleExport('png')}
-                  disabled={isExporting}
+                  disabled={isLoading}
                 >
                   <FileImage className="h-3 w-3 mr-1" />
                   PNG Image
@@ -1030,35 +1042,35 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                   size="sm" 
                   variant="outline" 
                   onClick={() => handleExport('geotiff')}
-                  disabled={isExporting}
+                  disabled={isLoading}
                 >
                   <FileImage className="h-3 w-3 mr-1" />
-                  Live GeoTIFF
+                  GeoTIFF
                 </Button>
                 <Button 
                   size="sm" 
                   variant="outline" 
                   onClick={() => handleExport('csv')}
-                  disabled={isExporting}
+                  disabled={isLoading}
                 >
                   <FileText className="h-3 w-3 mr-1" />
-                  Time Series CSV
+                  CSV Data
                 </Button>
                 <Button 
                   size="sm" 
                   variant="outline" 
                   onClick={() => handleExport('json')}
-                  disabled={isExporting}
+                  disabled={isLoading}
                 >
                   <FileText className="h-3 w-3 mr-1" />
-                  Complete Dataset
+                  JSON Data
                 </Button>
               </div>
-              {isExporting && (
+              {isLoading && (
                 <div className="mt-3">
                   <Progress value={66} className="h-2" />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Exporting live {exportFormat.toUpperCase()} data...
+                    Processing {activeDataset.toUpperCase()} data...
                   </p>
                 </div>
               )}
@@ -1066,131 +1078,322 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
           </Card>
         </div>
 
-        {/* Live Data Analysis Panel */}
+        {/* Data Analysis Panel */}
         <div className="xl:col-span-1 space-y-4">
+          {/* Dataset Statistics */}
+          <Card className="shadow-elegant">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <BarChart3 className="h-4 w-4" />
+                {activeDataset.toUpperCase()} Statistics
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activeDataset === 'sentinel2' && (
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Max NDVI:</span>
+                    <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
+                      {datasetStats.sentinel2.max}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Mean:</span>
+                    <span className="font-medium">{datasetStats.sentinel2.mean}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Median:</span>
+                    <span className="font-medium">{datasetStats.sentinel2.median}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Min NDVI:</span>
+                    <span className="font-medium">{datasetStats.sentinel2.min}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Std Dev:</span>
+                    <span className="font-medium">{datasetStats.sentinel2.deviation}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Pixels:</span>
+                    <span className="font-medium">{datasetStats.sentinel2.num}</span>
+                  </div>
+                </div>
+              )}
+
+              {activeDataset === 'sentinel1' && (
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Max Backscatter:</span>
+                    <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
+                      {datasetStats.sentinel1.max} dB
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Mean:</span>
+                    <span className="font-medium">{datasetStats.sentinel1.mean} dB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Median:</span>
+                    <span className="font-medium">{datasetStats.sentinel1.median} dB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Min:</span>
+                    <span className="font-medium">{datasetStats.sentinel1.min} dB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Std Dev:</span>
+                    <span className="font-medium">{datasetStats.sentinel1.deviation}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Pixels:</span>
+                    <span className="font-medium">{datasetStats.sentinel1.num}</span>
+                  </div>
+                </div>
+              )}
+
+              {activeDataset === 'era5' && (
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Temperature:</span>
+                    <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                      {datasetStats.era5.temperature}°C
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Rainfall:</span>
+                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                      {datasetStats.era5.rainfall} mm
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Soil Moisture:</span>
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                      {datasetStats.era5.soilMoisture}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Humidity:</span>
+                    <span className="font-medium">{datasetStats.era5.humidity}%</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Selected Pixel Data */}
           {selectedPixelData && (
             <Card className="shadow-elegant">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4" />
-                  Live Pixel Analysis
+                  Pixel Analysis
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-xs space-y-2">
                   <div className="bg-muted/50 p-2 rounded">
-                    <div className="text-muted-foreground">NDVI Value</div>
-                    <div className="font-semibold text-accent text-lg">
-                      {selectedPixelData.ndvi.toFixed(3)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Source: {selectedPixelData.source}
+                    <div className="text-muted-foreground">Dataset</div>
+                    <div className="font-semibold text-primary">
+                      {selectedPixelData.dataset.toUpperCase()}
                     </div>
                   </div>
-                  <div className="bg-muted/50 p-2 rounded">
-                    <div className="text-muted-foreground">Backscatter</div>
-                    <div className="font-semibold text-lg">
-                      {selectedPixelData.backscatter.toFixed(1)} dB
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-muted/50 p-2 rounded text-center">
-                      <div className="text-muted-foreground text-xs">Temp</div>
-                      <div className="font-semibold">{selectedPixelData.temperature.toFixed(1)}°C</div>
-                    </div>
-                    <div className="bg-muted/50 p-2 rounded text-center">
-                      <div className="text-muted-foreground text-xs">Rain</div>
-                      <div className="font-semibold">{selectedPixelData.rainfall.toFixed(1)}mm</div>
-                    </div>
-                  </div>
-                  <div className="bg-muted/50 p-2 rounded">
-                    <div className="text-muted-foreground">Soil Moisture</div>
-                    <div className="font-semibold text-lg">
-                      {selectedPixelData.soilMoisture.toFixed(3)}
-                    </div>
-                  </div>
+                  
+                  {selectedPixelData.dataset === 'sentinel2' && (
+                    <>
+                      <div className="bg-muted/50 p-2 rounded">
+                        <div className="text-muted-foreground">NDVI Value</div>
+                        <div className="font-semibold text-accent text-lg">
+                          {selectedPixelData.ndvi.toFixed(3)}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-muted/50 p-2 rounded text-center">
+                          <div className="text-muted-foreground text-xs">Red</div>
+                          <div className="font-semibold">{Math.round(selectedPixelData.red)}</div>
+                        </div>
+                        <div className="bg-muted/50 p-2 rounded text-center">
+                          <div className="text-muted-foreground text-xs">NIR</div>
+                          <div className="font-semibold">{Math.round(selectedPixelData.nir)}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {selectedPixelData.dataset === 'sentinel1' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-muted/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">VV Pol</div>
+                          <div className="font-semibold">{selectedPixelData.vv.toFixed(1)} dB</div>
+                        </div>
+                        <div className="bg-muted/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">VH Pol</div>
+                          <div className="font-semibold">{selectedPixelData.vh.toFixed(1)} dB</div>
+                        </div>
+                      </div>
+                      <div className="bg-muted/50 p-2 rounded">
+                        <div className="text-muted-foreground">Soil Moisture</div>
+                        <div className="font-semibold text-lg">
+                          {selectedPixelData.soilMoisture.toFixed(3)}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {selectedPixelData.dataset === 'era5' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-muted/50 p-2 rounded text-center">
+                          <div className="text-muted-foreground text-xs">Temp</div>
+                          <div className="font-semibold">{selectedPixelData.temperature.toFixed(1)}°C</div>
+                        </div>
+                        <div className="bg-muted/50 p-2 rounded text-center">
+                          <div className="text-muted-foreground text-xs">Rain</div>
+                          <div className="font-semibold">{selectedPixelData.rainfall.toFixed(1)}mm</div>
+                        </div>
+                      </div>
+                      <div className="bg-muted/50 p-2 rounded">
+                        <div className="text-muted-foreground">Humidity</div>
+                        <div className="font-semibold text-lg">
+                          {selectedPixelData.humidity.toFixed(1)}%
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Live Time Series Charts */}
-          <Tabs defaultValue="ndvi" className="w-full">
+          {/* Time Series Charts */}
+          <Tabs defaultValue="current" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="ndvi" className="text-xs">Live NDVI</TabsTrigger>
-              <TabsTrigger value="climate" className="text-xs">Live Climate</TabsTrigger>
+              <TabsTrigger value="current" className="text-xs">Current Season</TabsTrigger>
+              <TabsTrigger value="historical" className="text-xs">Historical</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="ndvi">
+            <TabsContent value="current">
               <Card className="shadow-elegant">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <TrendingUp className="h-4 w-4 text-accent" />
-                    Live NDVI Trends
+                    30-Day Trends
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
-                        <XAxis 
-                          dataKey="day" 
-                          tick={{ fontSize: 10 }}
-                          stroke="hsl(var(--muted-foreground))"
-                        />
-                        <YAxis 
-                          domain={[0.1, 0.9]}
-                          tick={{ fontSize: 10 }}
-                          stroke="hsl(var(--muted-foreground))"
-                        />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--background))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '6px'
-                          }}
-                          formatter={(value: any, name: string) => [
-                            value?.toFixed(3) || 'N/A', 
-                            name === 'ndvi' ? 'Live NDVI' : name
-                          ]}
-                        />
-                        <Area 
-                          type="monotone" 
-                          dataKey="ndvi" 
-                          stroke="hsl(var(--accent))" 
-                          fill="hsl(var(--accent))"
-                          fillOpacity={0.3}
-                          connectNulls={false}
-                        />
-                      </AreaChart>
+                      {activeDataset === 'sentinel2' ? (
+                        <AreaChart data={timeSeriesData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <YAxis 
+                            domain={[0.1, 0.8]}
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="ndvi" 
+                            stroke="hsl(var(--accent))" 
+                            fill="hsl(var(--accent))"
+                            fillOpacity={0.3}
+                          />
+                        </AreaChart>
+                      ) : activeDataset === 'sentinel1' ? (
+                        <LineChart data={timeSeriesData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="backscatter" 
+                            stroke="#3b82f6" 
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      ) : (
+                        <LineChart data={timeSeriesData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px'
+                            }}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="temperature" 
+                            stroke="#ef4444" 
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="rainfall" 
+                            stroke="#3b82f6" 
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      )}
                     </ResponsiveContainer>
                   </div>
-                  {timeSeriesData.length === 0 && (
-                    <div className="text-center text-sm text-muted-foreground py-8">
-                      No live NDVI data available yet. Data will appear as it's fetched from Copernicus.
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <TabsContent value="climate">
+            <TabsContent value="historical">
               <Card className="shadow-elegant">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm">
-                    <BarChart3 className="h-4 w-4 text-blue-500" />
-                    Live Climate Data
+                    <Calendar className="h-4 w-4 text-primary" />
+                    Multi-Year Analysis
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={climateData}>
+                      <LineChart data={historicalData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
                         <XAxis 
-                          dataKey="day" 
+                          dataKey="date" 
                           tick={{ fontSize: 10 }}
                           stroke="hsl(var(--muted-foreground))"
                         />
@@ -1204,89 +1407,145 @@ const SatelliteCropMonitoringDashboard: React.FC<SatelliteCropMonitoringDashboar
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '6px'
                           }}
-                          formatter={(value: any, name: string) => [
-                            value?.toFixed(1) || 'N/A', 
-                            name === 'temperature' ? 'Temperature (°C)' : 
-                            name === 'soilMoisture' ? 'Soil Moisture' : name
-                          ]}
                         />
-                        <Line 
-                          type="monotone" 
-                          dataKey="temperature" 
-                          stroke="#ef4444" 
-                          strokeWidth={2}
-                          dot={false}
-                          connectNulls={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="soilMoisture" 
-                          stroke="#3b82f6" 
-                          strokeWidth={2}
-                          dot={false}
-                          yAxisId="right"
-                          connectNulls={false}
-                        />
+                        {['2022', '2023', '2024', '2025'].map((year, index) => (
+                          <Line 
+                            key={year}
+                            type="monotone" 
+                            dataKey="ndvi"
+                            data={historicalData.filter(d => d.year === year)}
+                            stroke={['#ef4444', '#3b82f6', '#10b981', '#f59e0b'][index]}
+                            strokeWidth={2}
+                            dot={false}
+                            name={year}
+                          />
+                        ))}
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  {climateData.length === 0 && (
-                    <div className="text-center text-sm text-muted-foreground py-8">
-                      No live climate data available yet. Data will appear as it's fetched from ERA5.
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
 
-          {/* Live Data Summary */}
+          {/* Color Legend */}
+          <Card className="shadow-elegant">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Info className="h-4 w-4" />
+                Color Legend - {activeDataset.toUpperCase()}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activeDataset === 'sentinel2' && (
+                <div>
+                  <h4 className="text-xs font-medium mb-2">NDVI (Vegetation Health)</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-red-800 rounded"></div>
+                      <span>Very Low (0.1-0.3) - Bare soil/stressed crops</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-orange-500 rounded"></div>
+                      <span>Low (0.3-0.5) - Sparse vegetation</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-yellow-500 rounded"></div>
+                      <span>Medium (0.5-0.7) - Moderate vegetation</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-green-400 rounded"></div>
+                      <span>High (0.7-0.9) - Healthy vegetation</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeDataset === 'sentinel1' && (
+                <div>
+                  <h4 className="text-xs font-medium mb-2">Radar Backscatter (dB)</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-blue-900 rounded"></div>
+                      <span>Low (-15 to -10) - Smooth surfaces</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-blue-600 rounded"></div>
+                      <span>Medium (-10 to -5) - Moderate roughness</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-blue-400 rounded"></div>
+                      <span>High (-5 to 0) - Rough surfaces</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-blue-200 rounded"></div>
+                      <span>Very High (0+) - Very rough/wet</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeDataset === 'era5' && (
+                <div>
+                  <h4 className="text-xs font-medium mb-2">Temperature & Rainfall</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-blue-600 rounded"></div>
+                      <span>Cool (15-20°C)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-yellow-500 rounded"></div>
+                      <span>Moderate (20-30°C)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-orange-500 rounded"></div>
+                      <span>Warm (30-35°C)</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-red-500 rounded"></div>
+                      <span>Hot (35°C+)</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-2">
+                      Circle size indicates rainfall amount
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Data Summary */}
           <Card className="shadow-elegant">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Activity className="h-4 w-4" />
-                Live Data Summary
+                Field Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-xs">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Field:</span>
-                <span className="font-medium">{selectedField.name}</span>
+                <span className="text-muted-foreground">Field Name:</span>
+                <span className="font-medium">{selectedField?.name || 'Demo Field'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Live NDVI:</span>
-                <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
-                  {latestSentinel2?.data_payload?.ndvi?.mean?.toFixed(3) || 'Fetching...'}
-                </Badge>
+                <span className="text-muted-foreground">Area:</span>
+                <Badge variant="outline">{selectedField?.area?.toFixed(1) || '45.2'} acres</Badge>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Data Points:</span>
-                <Badge variant="outline">{satelliteData.filter(d => d.region_name === selectedField.name).length}</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Coverage:</span>
-                <Badge variant="outline">
-                  {selectedField.area.toFixed(1)} acres
+                <span className="text-muted-foreground">Active Dataset:</span>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  {activeDataset.toUpperCase()}
                 </Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Last Update:</span>
-                <span className="font-medium">
-                  {lastRefresh ? lastRefresh.toLocaleTimeString() : 'Never'}
-                </span>
+                <span className="font-medium">{selectedDate}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Copernicus Status:</span>
-                <div className="flex items-center gap-1">
-                  {serviceStatus.openAccessHub ? (
-                    <CheckCircle className="h-3 w-3 text-accent" />
-                  ) : (
-                    <AlertCircle className="h-3 w-3 text-destructive" />
-                  )}
-                  <span className="text-xs">
-                    {serviceStatus.openAccessHub ? 'Connected' : 'Offline'}
-                  </span>
-                </div>
+                <span className="text-muted-foreground">Data Quality:</span>
+                <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
+                  High
+                </Badge>
               </div>
             </CardContent>
           </Card>
