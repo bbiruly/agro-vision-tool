@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import SatelliteAPIConfiguration from "@/components/SatelliteAPIConfiguration"
 import { 
   User, 
   Bell, 
@@ -21,7 +22,8 @@ import {
   Download,
   Upload,
   Trash2,
-  Save
+  Save,
+  Satellite
 } from "lucide-react"
 
 const Settings = () => {
@@ -44,12 +46,13 @@ const Settings = () => {
           </div>
 
           <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
               <TabsTrigger value="data">Data</TabsTrigger>
               <TabsTrigger value="team">Team</TabsTrigger>
+              <TabsTrigger value="satellite">Satellite APIs</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="space-y-6">
@@ -458,6 +461,23 @@ const Settings = () => {
                       </div>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="satellite" className="space-y-6">
+              <Card className="shadow-medium">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Satellite className="h-5 w-5" />
+                    Satellite API Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Configure real satellite data APIs for live monitoring
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SatelliteAPIConfiguration />
                 </CardContent>
               </Card>
             </TabsContent>

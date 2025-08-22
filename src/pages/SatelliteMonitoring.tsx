@@ -1,7 +1,10 @@
 import Navigation from "@/components/Navigation"
 import SatelliteCropMonitoringDashboard from "@/components/SatelliteCropMonitoringDashboard"
+import SatelliteAPIConfiguration from "@/components/SatelliteAPIConfiguration"
+import RealTimeSatelliteStatus from "@/components/RealTimeSatelliteStatus"
 import LocationSearchField from "@/components/LocationSearchField"
 import MapAreaSelector from "@/components/MapAreaSelector"
+import { useRealSatelliteData } from "@/hooks/useRealSatelliteData"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,10 +23,21 @@ import {
   Layers,
   Activity,
   Search,
-  Square
+  Square,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from "lucide-react"
 
 const SatelliteMonitoring = () => {
+  const { 
+    isRealTimeEnabled, 
+    monitoringStatus, 
+    realTimeStatus,
+    startRealTimeMonitoring,
+    refreshAllMonitoring 
+  } = useRealSatelliteData();
+  
   const [selectedFieldId, setSelectedFieldId] = useState('field-1');
   const [currentLocation, setCurrentLocation] = useState<{lat: number; lng: number; name: string} | null>(null);
   const [selectedArea, setSelectedArea] = useState<any>(null);
@@ -31,6 +45,7 @@ const SatelliteMonitoring = () => {
     localStorage.getItem('mapbox_public_token') || ''
   );
   const [activeTab, setActiveTab] = useState<'predefined' | 'custom'>('predefined');
+  const [showAPIConfig, setShowAPIConfig] = useState(false);
   
   // Sample field data
   const fields = [
@@ -127,13 +142,76 @@ const SatelliteMonitoring = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold text-foreground">Satellite Crop Monitoring</h1>
-              <p className="text-muted-foreground">Multi-source satellite data visualization with location search and custom area selection</p>
+              <p className="text-muted-foreground">
+                Real-time multi-source satellite data with location search and custom area selection
+                {isRealTimeEnabled && (
+                  <span className="inline-flex items-center gap-1 ml-2 text-accent">
+                    <Wifi className="h-3 w-3" />
+                    Live monitoring active
+                  </span>
+                )}
+              </p>
             </div>
-            <Button variant="outline">
-              <Settings className="h-4 w-4 mr-2" />
-              Configure
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => setShowAPIConfig(!showAPIConfig)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                API Config
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={refreshAllMonitoring}
+                disabled={!isRealTimeEnabled}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh All
+              </Button>
+            </div>
           </div>
+
+          {/* API Configuration Panel */}
+          {showAPIConfig && (
+            <SatelliteAPIConfiguration />
+          )}
+
+          {/* Real-Time Status Overview */}
+          <Card className="shadow-medium">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Real-Time Monitoring Overview
+                {realTimeStatus.isConnected ? (
+                  <Wifi className="h-4 w-4 text-accent" />
+                ) : (
+                  <WifiOff className="h-4 w-4 text-destructive" />
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{monitoringStatus.activeFields}</div>
+                  <div className="text-sm text-muted-foreground">Active Fields</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-accent">{monitoringStatus.totalDataPoints}</div>
+                  <div className="text-sm text-muted-foreground">Data Points</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{monitoringStatus.recentDataPoints}</div>
+                  <div className="text-sm text-muted-foreground">Recent (24h)</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${realTimeStatus.isConnected ? 'text-accent' : 'text-destructive'}`}>
+                    {realTimeStatus.isConnected ? 'LIVE' : 'OFFLINE'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Status</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Location Search and Area Selection */}
           <Card className="shadow-medium">
@@ -207,7 +285,7 @@ const SatelliteMonitoring = () => {
           </Card>
 
           {/* Field Information */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card className="shadow-soft">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -239,8 +317,8 @@ const SatelliteMonitoring = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Data Sources</p>
-                    <p className="text-lg font-bold text-primary">3 Active</p>
-                    <p className="text-xs text-primary">Sentinel-1/2, ERA5</p>
+                    <p className="text-lg font-bold text-primary">{realTimeStatus.activeSubscriptions.length}</p>
+                    <p className="text-xs text-primary">Real-time APIs</p>
                   </div>
                   <Satellite className="h-8 w-8 text-primary" />
                 </div>
@@ -252,10 +330,35 @@ const SatelliteMonitoring = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Latest Update</p>
-                    <p className="text-lg font-bold text-accent">Aug 19</p>
-                    <p className="text-xs text-accent">2025</p>
+                    <p className="text-lg font-bold text-accent">
+                      {realTimeStatus.lastUpdate ? realTimeStatus.lastUpdate.toLocaleDateString().split('/')[1] : 'N/A'}
+                    </p>
+                    <p className="text-xs text-accent">
+                      {realTimeStatus.lastUpdate ? realTimeStatus.lastUpdate.toLocaleDateString().split('/')[2] : 'No data'}
+                    </p>
                   </div>
                   <Calendar className="h-8 w-8 text-accent" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-soft">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Real-Time</p>
+                    <p className={`text-lg font-bold ${isRealTimeEnabled ? 'text-accent' : 'text-destructive'}`}>
+                      {isRealTimeEnabled ? 'ENABLED' : 'DISABLED'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {realTimeStatus.isConnected ? 'Connected' : 'Disconnected'}
+                    </p>
+                  </div>
+                  {realTimeStatus.isConnected ? (
+                    <Wifi className="h-8 w-8 text-accent" />
+                  ) : (
+                    <WifiOff className="h-8 w-8 text-destructive" />
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -265,14 +368,16 @@ const SatelliteMonitoring = () => {
           <Card className="shadow-medium">
             <CardHeader>
               <CardTitle>Satellite Data Sources</CardTitle>
-              <CardDescription>Technical specifications and capabilities of each data source</CardDescription>
+              <CardDescription>
+                Real-time satellite data sources with API integration status
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center gap-2">
                     <Satellite className="h-4 w-4 text-primary" />
-                    Sentinel-2 Optical
+                    Sentinel-2 Optical (Real API)
                   </h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -288,8 +393,10 @@ const SatelliteMonitoring = () => {
                       <Badge variant="outline">5 days</Badge>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Key Index:</span>
-                      <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">NDVI</Badge>
+                      <span className="text-muted-foreground">API Status:</span>
+                      <Badge variant="outline" className={isRealTimeEnabled ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
+                      <span className="text-muted-foreground">Data Source:</span>
+                      <span className="text-xs">Copernicus Hub + Sentinel Hub</span>
                     </div>
                   </div>
                 </div>
@@ -297,7 +404,7 @@ const SatelliteMonitoring = () => {
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center gap-2">
                     <Activity className="h-4 w-4 text-accent" />
-                    Sentinel-1 Radar
+                    Sentinel-1 Radar (Real API)
                   </h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -311,10 +418,12 @@ const SatelliteMonitoring = () => {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Polarization:</span>
                       <Badge variant="outline">VV + VH</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Key Metric:</span>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Backscatter</Badge>
+                      <span className="text-muted-foreground">Data Source:</span>
+                      <span className="text-xs">Copernicus Open Access Hub</span>
+                      <span className="text-muted-foreground">API Status:</span>
+                      <Badge variant="outline" className={isRealTimeEnabled ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
+                        {isRealTimeEnabled ? 'Connected' : 'Not configured'}
+                      </Badge>
                     </div>
                   </div>
                 </div>
@@ -322,7 +431,7 @@ const SatelliteMonitoring = () => {
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center gap-2">
                     <Database className="h-4 w-4 text-blue-500" />
-                    ERA5 Climate
+                    ERA5 Climate (Real API)
                   </h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -330,16 +439,18 @@ const SatelliteMonitoring = () => {
                       <span className="font-medium">Weather & climate</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Resolution:</span>
-                      <Badge variant="outline">0.25° grid</Badge>
+                      <span className="text-muted-foreground">API Status:</span>
+                      <Badge variant="outline" className={isRealTimeEnabled ? "bg-accent/10 text-accent border-accent/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
+                        {isRealTimeEnabled ? 'Connected' : 'Not configured'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Data Source:</span>
+                      <span className="text-xs">Copernicus Climate Data Store</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Frequency:</span>
-                      <Badge variant="outline">Hourly</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Variables:</span>
-                      <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">Temp, Rain, Moisture</Badge>
+                      <span className="text-xs">6-hourly updates</span>
                     </div>
                   </div>
                 </div>
@@ -368,40 +479,46 @@ const SatelliteMonitoring = () => {
           <Card className="shadow-medium">
             <CardHeader>
               <CardTitle>Crop Monitoring Insights</CardTitle>
-              <CardDescription>AI-powered analysis from multi-source satellite data</CardDescription>
+              <CardDescription>AI-powered analysis from real-time multi-source satellite data</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="p-4 border rounded-lg bg-accent/5 border-accent/20">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="h-4 w-4 text-accent" />
-                    <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">Vegetation Health</Badge>
+                    <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
+                      Real NDVI Analysis
+                    </Badge>
                   </div>
-                  <h4 className="font-semibold mb-1">Excellent NDVI Trends</h4>
+                  <h4 className="font-semibold mb-1">Real-Time Vegetation Health</h4>
                   <p className="text-sm text-muted-foreground">
-                    Current NDVI values (0.42 mean) indicate healthy crop development. 18% improvement over last season.
+                    Live NDVI analysis from Sentinel-2 shows {monitoringStatus.activeFields} fields with real-time vegetation monitoring.
                   </p>
                 </div>
 
                 <div className="p-4 border rounded-lg bg-primary/5 border-primary/20">
                   <div className="flex items-center gap-2 mb-2">
                     <Activity className="h-4 w-4 text-primary" />
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Soil Analysis</Badge>
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                      Real Radar Analysis
+                    </Badge>
                   </div>
-                  <h4 className="font-semibold mb-1">Optimal Soil Conditions</h4>
+                  <h4 className="font-semibold mb-1">Live Soil Monitoring</h4>
                   <p className="text-sm text-muted-foreground">
-                    Radar backscatter analysis shows adequate soil moisture levels with good surface roughness for crop growth.
+                    Real-time Sentinel-1 backscatter analysis provides continuous soil moisture and surface condition monitoring.
                   </p>
                 </div>
 
                 <div className="p-4 border rounded-lg bg-blue-500/5 border-blue-500/20">
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="h-4 w-4 text-blue-500" />
-                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">Climate Conditions</Badge>
+                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                      Real Climate Data
+                    </Badge>
                   </div>
-                  <h4 className="font-semibold mb-1">Favorable Weather</h4>
+                  <h4 className="font-semibold mb-1">Live Weather Monitoring</h4>
                   <p className="text-sm text-muted-foreground">
-                    Current temperature (27.9°C) and recent rainfall (43.1mm) provide ideal conditions for crop development.
+                    Real-time ERA5 climate data provides 6-hourly updates on temperature, rainfall, and soil moisture conditions.
                   </p>
                 </div>
               </div>
