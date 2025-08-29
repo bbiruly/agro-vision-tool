@@ -24,8 +24,6 @@ const GeospatialAnalysis = () => {
     <div className="min-h-screen bg-gradient-earth">
       <Navigation />
 
-
-
       <div className="md:pl-64">
         <div className="p-6 space-y-6">
           {/* Header */}
