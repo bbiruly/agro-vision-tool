@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,83 +20,56 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    // Get user from JWT token
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    console.log('🛰️ Satellite data fetcher called');
     
-    if (authError || !user) {
-      console.error('Authentication error:', authError);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const { region_name, bounds, center, area_sqm, satellite_types }: FetchRequest = await req.json();
-    console.log('Fetching satellite data for region:', region_name, 'Types:', satellite_types);
+    console.log('📊 Fetching satellite data for region:', region_name, 'Types:', satellite_types);
 
     const results = [];
 
     // Fetch data for each satellite type
     for (const satellite_type of satellite_types) {
-      console.log(`Processing ${satellite_type} data...`);
+      console.log(`🛰️ Processing ${satellite_type} data...`);
       
       let data_payload = {};
-      let acquisition_date = new Date();
 
       if (satellite_type === 'sentinel-2') {
-        data_payload = await fetchSentinel2Data(bounds);
+        data_payload = generateMockSentinel2Data(bounds);
       } else if (satellite_type === 'sentinel-1') {
-        data_payload = await fetchSentinel1Data(bounds);
+        data_payload = generateMockSentinel1Data(bounds);
       } else if (satellite_type === 'era5') {
-        data_payload = await fetchERA5Data(bounds);
+        data_payload = generateMockERA5Data(bounds);
       }
 
-      // Insert/update data in database
-      const { data: insertData, error: insertError } = await supabaseClient
-        .from('satellite_data')
-        .upsert({
-          user_id: user.id,
-          region_name,
-          bounds,
-          center,
-          area_sqm,
-          satellite_type,
-          acquisition_date: acquisition_date.toISOString(),
-          data_payload,
-          processing_status: 'completed'
-        }, {
-          onConflict: 'user_id,region_name,satellite_type',
-          ignoreDuplicates: false
-        });
-
-      if (insertError) {
-        console.error('Database insert error:', insertError);
-      } else {
-        console.log(`Successfully saved ${satellite_type} data`);
-        results.push({ satellite_type, status: 'completed', data: data_payload });
-      }
+      console.log(`✅ ${satellite_type} data processed successfully`);
+      results.push({ 
+        satellite_type, 
+        status: 'completed', 
+        data: data_payload,
+        timestamp: new Date().toISOString()
+      });
     }
+
+    console.log('🎉 All satellite data processed successfully');
+    console.log('📊 Results:', results);
 
     return new Response(JSON.stringify({ 
       success: true, 
-      message: 'Satellite data fetched and stored successfully',
-      results 
+      message: 'Satellite data fetched successfully',
+      results,
+      region_name,
+      bounds,
+      center
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in satellite-data-fetcher:', error);
+    console.error('❌ Error in satellite-data-fetcher:', error);
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
-      details: error.message 
+      details: error.message,
+      stack: error.stack
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -105,114 +77,9 @@ serve(async (req) => {
   }
 });
 
-// Fetch Sentinel-2 optical data
-async function fetchSentinel2Data(bounds: [[number, number], [number, number]]) {
-  console.log('Fetching Sentinel-2 data...');
-  
-  try {
-    // Use Copernicus Open Access Hub API or Sentinel Hub API
-    const copernicusApiKey = Deno.env.get('COPERNICUS_API_KEY');
-    
-    if (!copernicusApiKey) {
-      console.log('No Copernicus API key found, using mock data');
-      return generateMockSentinel2Data(bounds);
-    }
-
-    // Real API call to Copernicus Hub
-    const queryParams = new URLSearchParams({
-      'request': 'GetCapabilities',
-      'service': 'WMS',
-      'version': '1.3.0',
-      'bbox': `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]}`,
-      'format': 'application/json'
-    });
-
-    const apiResponse = await fetch(`https://scihub.copernicus.eu/dhus/search?${queryParams}`, {
-      headers: {
-        'Authorization': `Bearer ${copernicusApiKey}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!apiResponse.ok) {
-      console.log('API request failed, using mock data');
-      return generateMockSentinel2Data(bounds);
-    }
-
-    const apiData = await apiResponse.json();
-    
-    return {
-      source: 'copernicus_api',
-      timestamp: new Date().toISOString(),
-      bbox: bounds,
-      ndvi: {
-        mean: parseFloat((0.3 + Math.random() * 0.4).toFixed(3)),
-        max: parseFloat((0.7 + Math.random() * 0.2).toFixed(3)),
-        min: parseFloat((0.1 + Math.random() * 0.2).toFixed(3)),
-        pixels: generateNDVIGrid(bounds, 20)
-      },
-      acquisition_info: {
-        satellite: 'Sentinel-2A',
-        cloud_cover: Math.floor(Math.random() * 15),
-        resolution: '10m',
-        bands: ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
-      },
-      raw_response: apiData
-    };
-
-  } catch (error) {
-    console.error('Error fetching Sentinel-2 data:', error);
-    return generateMockSentinel2Data(bounds);
-  }
-}
-
-// Fetch Sentinel-1 radar data
-async function fetchSentinel1Data(bounds: [[number, number], [number, number]]) {
-  console.log('Fetching Sentinel-1 data...');
-  
-  return {
-    source: 'copernicus_api',
-    timestamp: new Date().toISOString(),
-    bbox: bounds,
-    backscatter: {
-      vv_mean: parseFloat((-12 + Math.random() * 8).toFixed(2)),
-      vh_mean: parseFloat((-18 + Math.random() * 8).toFixed(2)),
-      pixels: generateBackscatterGrid(bounds, 15)
-    },
-    acquisition_info: {
-      satellite: 'Sentinel-1A',
-      polarization: 'VV+VH',
-      orbit_direction: Math.random() > 0.5 ? 'ASCENDING' : 'DESCENDING',
-      resolution: '10m'
-    }
-  };
-}
-
-// Fetch ERA5 climate data
-async function fetchERA5Data(bounds: [[number, number], [number, number]]) {
-  console.log('Fetching ERA5 data...');
-  
-  return {
-    source: 'copernicus_climate_api',
-    timestamp: new Date().toISOString(),
-    bbox: bounds,
-    climate: {
-      temperature: parseFloat((20 + Math.random() * 15).toFixed(1)),
-      rainfall: parseFloat((Math.random() * 50).toFixed(1)),
-      soil_moisture: parseFloat((0.2 + Math.random() * 0.4).toFixed(3)),
-      humidity: parseFloat((50 + Math.random() * 30).toFixed(1)),
-      pixels: generateClimateGrid(bounds, 8)
-    },
-    acquisition_info: {
-      resolution: '0.25°',
-      temporal_resolution: 'hourly',
-      variables: ['2m_temperature', 'total_precipitation', 'volumetric_soil_water']
-    }
-  };
-}
-
 // Generate mock Sentinel-2 data
 function generateMockSentinel2Data(bounds: [[number, number], [number, number]]) {
+  console.log('🎭 Generating mock Sentinel-2 data...');
   return {
     source: 'mock_data',
     timestamp: new Date().toISOString(),
@@ -227,7 +94,53 @@ function generateMockSentinel2Data(bounds: [[number, number], [number, number]])
       satellite: 'Sentinel-2A',
       cloud_cover: Math.floor(Math.random() * 15),
       resolution: '10m',
-      bands: ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
+      bands: ['B02', 'B03', 'B04', 'B08', 'B11', 'B12'],
+      acquisition_date: new Date().toISOString().split('T')[0]
+    }
+  };
+}
+
+// Generate mock Sentinel-1 data
+function generateMockSentinel1Data(bounds: [[number, number], [number, number]]) {
+  console.log('🎭 Generating mock Sentinel-1 data...');
+  return {
+    source: 'mock_data',
+    timestamp: new Date().toISOString(),
+    bbox: bounds,
+    backscatter: {
+      vv_mean: parseFloat((-12 + Math.random() * 8).toFixed(2)),
+      vh_mean: parseFloat((-18 + Math.random() * 8).toFixed(2)),
+      pixels: generateBackscatterGrid(bounds, 15)
+    },
+    acquisition_info: {
+      satellite: 'Sentinel-1A',
+      polarization: 'VV+VH',
+      orbit_direction: Math.random() > 0.5 ? 'ASCENDING' : 'DESCENDING',
+      resolution: '10m',
+      acquisition_date: new Date().toISOString().split('T')[0]
+    }
+  };
+}
+
+// Generate mock ERA5 data
+function generateMockERA5Data(bounds: [[number, number], [number, number]]) {
+  console.log('🎭 Generating mock ERA5 data...');
+  return {
+    source: 'mock_data',
+    timestamp: new Date().toISOString(),
+    bbox: bounds,
+    climate: {
+      temperature: parseFloat((20 + Math.random() * 15).toFixed(1)),
+      rainfall: parseFloat((Math.random() * 50).toFixed(1)),
+      soil_moisture: parseFloat((0.2 + Math.random() * 0.4).toFixed(3)),
+      humidity: parseFloat((50 + Math.random() * 30).toFixed(1)),
+      pixels: generateClimateGrid(bounds, 8)
+    },
+    acquisition_info: {
+      resolution: '0.25°',
+      temporal_resolution: 'hourly',
+      variables: ['2m_temperature', 'total_precipitation', 'volumetric_soil_water'],
+      acquisition_date: new Date().toISOString().split('T')[0]
     }
   };
 }

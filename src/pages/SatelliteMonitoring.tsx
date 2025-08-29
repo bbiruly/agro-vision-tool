@@ -24,6 +24,9 @@ import {
 } from "lucide-react"
 
 const SatelliteMonitoring = () => {
+  console.log('🛰️ SatelliteMonitoring component loaded');
+  console.log('🔧 Checking API configuration...');
+  
   const [selectedFieldId, setSelectedFieldId] = useState('field-1');
   const [currentLocation, setCurrentLocation] = useState<{lat: number; lng: number; name: string} | null>(null);
   const [selectedArea, setSelectedArea] = useState<any>(null);
@@ -70,6 +73,9 @@ const SatelliteMonitoring = () => {
         area: selectedArea.area / 4047, // Convert m² to acres
         crop: 'Mixed'
       } : null;
+
+
+      console.log(selectedArea)
 
   const handleLocationSelect = (location: {lat: number; lng: number; name: string}) => {
     setCurrentLocation(location);
