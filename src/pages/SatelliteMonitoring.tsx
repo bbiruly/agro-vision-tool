@@ -22,7 +22,8 @@ import {
   Sparkles,
   Target,
   Globe,
-  BarChart3
+  BarChart3,
+  CheckCircle
 } from "lucide-react"
 
 import fetcherAPI from '../api/fetcher'
@@ -443,10 +444,22 @@ const SatelliteMonitoring = () => {
       };
       advantages: string[];
     };
+    fallbackWarning?: string; // Added for progressive fallback
   } | null>(null);
   const [isLoadingNDVI, setIsLoadingNDVI] = useState(false);
   const [ndviError, setNdviError] = useState<string | null>(null);
   const [lastFetchedFieldId, setLastFetchedFieldId] = useState<string | null>(null);
+  
+  // ✅ Add date range state for farmer control
+  const [dateRange, setDateRange] = useState('30days');
+  
+  // ✅ Date range options for farmers
+  const dateRangeOptions = [
+    { value: '7days', label: 'Last 7 Days', days: 7 },
+    { value: '30days', label: 'Last 30 Days', days: 30 },
+    { value: '90days', label: 'Last 3 Months', days: 90 },
+    { value: '180days', label: 'Last 6 Months', days: 180 }
+  ];
   
   // Sample field data
   const fields = [
@@ -523,7 +536,26 @@ const SatelliteMonitoring = () => {
         
         const coords = selectedField.bounds;
 
-        console.log(coords)
+        // ✅ Get recent date range based on selected range
+        const getDateRange = () => {
+          const endDate = new Date();
+          const startDate = new Date();
+          const selectedOption = dateRangeOptions.find(opt => opt.value === dateRange);
+          const days = selectedOption ? selectedOption.days : 30;
+          const buffer = days <= 7 ? 5 : 3; // Add buffer
+          const adjustedDays = days + buffer;
+          startDate.setDate(endDate.getDate() - adjustedDays);
+          
+          return {
+            startMonth: startDate.toISOString().split('T')[0],
+            endMonth: endDate.toISOString().split('T')[0]
+          };
+        };
+
+        const { startMonth, endMonth } = getDateRange();
+
+        console.log("📅 Using data range:", { startMonth, endMonth, range: dateRange });
+
         // ✅ Ensure polygon format - bounds should be [[minLng, minLat], [maxLng, maxLat]]
         // Convert to proper polygon coordinates: [minLng,minLat], [maxLng,minLat], [maxLng,maxLat], [minLng,maxLat], [minLng,minLat]
         const polygon = {
@@ -537,16 +569,93 @@ const SatelliteMonitoring = () => {
           ]],
         };
 
+        // ✅ Enhanced API call with recent data and radar capabilities
         const res = await fetcherAPI({
           method: "POST",
           url: "/gee/ndvi",
           data: {
-            startMonth: "2025-01-01",
-            endMonth: "2025-08-01",
-            thresholds: 0.3,
+            startMonth,  // ✅ Dynamic date range
+            endMonth,    // ✅ Current date
+            thresholds: {
+              low: 0.3,    // Alert when below this
+              drop: 0.2,   // Critical alert
+              high: 0.8    // Excellent health
+            },
+            useRadar: true,      // ✅ Enable radar for all-weather monitoring
+            cloudFilter: 80,  // ✅ Increase cloud tolerance for longer ranges
+            enableFusion: true,  // ✅ Use multi-source fusion (Sentinel-2 + Sentinel-1 + MODIS)
             polygon
           },
         });
+
+        console.log("✅ Recent Data Response:", res);
+        
+        // ✅ Enhanced error handling with progressive fallback
+        if (!res.success) {
+          if (res.error && res.error.includes("Image has no bands")) {
+            console.log("⚠️ No satellite data available for", dateRange, "range");
+            
+            // ✅ Progressive fallback for longer date ranges
+            if (dateRange === '180days' || dateRange === '90days') {
+              console.log("🔄 Attempting fallback to shorter date range...");
+              
+              // Try with 30 days instead
+              const fallbackRes = await fetcherAPI({
+                method: "POST",
+                url: "/gee/ndvi",
+                data: {
+                  startMonth: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                  endMonth: new Date().toISOString().split('T')[0],
+                  thresholds: {
+                    low: 0.3,
+                    drop: 0.2,
+                    high: 0.8
+                  },
+                  useRadar: true,
+                  cloudFilter: 70,
+                  enableFusion: true,
+                  polygon
+                },
+              });
+              
+              if (fallbackRes.success) {
+                console.log("✅ Fallback successful with 30-day data");
+                setNdviData({
+                  ...fallbackRes,
+                  fallbackWarning: `⚠️ Showing 30-day data instead of ${dateRange}. Longer ranges may not have sufficient satellite coverage.`
+                });
+                setLastFetchedFieldId(selectedField.id);
+                return;
+              }
+            }
+            
+            // ✅ Provide helpful error message based on date range
+            let errorMessage = "No satellite data available for the selected time period.";
+            
+            if (dateRange === '7days') {
+              errorMessage = "⚠️ Very recent data (7 days) may not be available due to satellite processing delays. Try 30 days.";
+            } else if (dateRange === '30days') {
+              errorMessage = "⚠️ No satellite data available for the last 30 days. This could be due to high cloud cover or processing delays.";
+            } else if (dateRange === '90days') {
+              errorMessage = "⚠️ 3-month data not available. This could be due to extended cloud cover or data gaps. Showing 30-day fallback data.";
+            } else if (dateRange === '180days') {
+              errorMessage = "⚠️ 6-month data not available. This could be due to extended cloud cover or data gaps. Showing 30-day fallback data.";
+            }
+            
+            setNdviError(errorMessage);
+            
+            // Show helpful suggestions
+            console.log("💡 Suggestions for better data availability:");
+            console.log("- Try shorter date ranges (7-30 days)");
+            console.log("- Check if the field location has good satellite coverage");
+            console.log("- Consider seasonal factors (monsoon periods have more clouds)");
+            console.log("- Wait a few days for new satellite data to become available");
+            
+          } else {
+            setNdviError(res.error || 'Failed to fetch NDVI data');
+          }
+          return;
+        }
 
         console.log("✅ Backend Response:", res);
         setNdviData(res);
@@ -560,7 +669,7 @@ const SatelliteMonitoring = () => {
     };
 
     fetchNDVI();
-  }, [selectedField, lastFetchedFieldId]);
+  }, [selectedField, lastFetchedFieldId, dateRange]);
 
   if (!mapboxToken) {
     return (
@@ -665,9 +774,148 @@ const SatelliteMonitoring = () => {
             }}
           />
 
+          {/* ✅ Date Range Selector for Farmers */}
+          <Card className="shadow-medium border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+              <CardTitle className="flex items-center gap-2 text-blue-800">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Data Time Range Selection
+              </CardTitle>
+              <CardDescription className="text-blue-600">
+                Choose how much recent data to analyze for your field
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {dateRangeOptions.map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={dateRange === option.value ? "default" : "outline"}
+                    className={`transition-all ${
+                      dateRange === option.value 
+                        ? 'bg-blue-600 text-white shadow-md' 
+                        : 'hover:bg-blue-50 hover:border-blue-300'
+                    }`}
+                    onClick={() => {
+                      setDateRange(option.value);
+                      // Trigger data refresh with new date range
+                      setLastFetchedFieldId(null);
+                      setNdviData(null);
+                    }}
+                    disabled={isLoadingNDVI}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Selected:</strong> {dateRangeOptions.find(opt => opt.value === dateRange)?.label}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Radar data ensures continuous monitoring even during cloudy weather
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Enhanced Field Information Cards */}
           {selectedField && (
-            <FieldInfoCards selectedField={selectedField} ndviData={ndviData} />
+            <>
+              <FieldInfoCards selectedField={selectedField} ndviData={ndviData} />
+              
+              {/* ✅ Data Freshness Indicator */}
+              {ndviData && (
+                <Card className="shadow-soft border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 rounded-full">
+                          <Satellite className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-800">Recent Data Available</p>
+                          <p className="text-sm text-green-600">
+                            Using {dateRangeOptions.find(opt => opt.value === dateRange)?.label} of satellite data
+                          </p>
+                          {ndviData.fallbackWarning && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              {ndviData.fallbackWarning}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          All-Weather Monitoring
+                        </Badge>
+                        <p className="text-xs text-green-600 mt-1">
+                          Radar ensures no data gaps
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ No Data Available Help */}
+              {ndviError && ndviError.includes("No satellite data available") && (
+                <Card className="shadow-soft border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-yellow-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-orange-800">
+                      <AlertTriangle className="h-5 w-5 text-orange-600" />
+                      No Satellite Data Available
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <p className="text-orange-700">
+                        No satellite data is available for the selected time period. This could be due to:
+                      </p>
+                      <ul className="list-disc list-inside space-y-2 text-sm text-orange-600">
+                        <li><strong>Recent date range:</strong> Satellite data has 1-3 day processing delays</li>
+                        <li><strong>High cloud cover:</strong> Optical satellites cannot see through clouds</li>
+                        <li><strong>Field location:</strong> Area may not be covered by current satellite passes</li>
+                        <li><strong>Processing delays:</strong> Earth Engine may be experiencing high load</li>
+                      </ul>
+                      <div className="mt-4 p-3 bg-orange-100 rounded-lg">
+                        <p className="text-sm font-semibold text-orange-800 mb-2">Suggested Solutions:</p>
+                        <div className="space-y-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setDateRange('30days');
+                              setLastFetchedFieldId(null);
+                              setNdviData(null);
+                            }}
+                            className="w-full justify-start"
+                          >
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Try "Last 30 Days" for better data availability
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setDateRange('7days');
+                              setLastFetchedFieldId(null);
+                              setNdviData(null);
+                            }}
+                            className="w-full justify-start"
+                          >
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Try "Last 7 Days" for most recent data
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
 
           {/* Loading and Error States */}

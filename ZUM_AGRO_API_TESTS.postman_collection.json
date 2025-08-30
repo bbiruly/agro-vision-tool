@@ -1,0 +1,458 @@
+{
+  "info": {
+    "name": "ZUM Agro Vision - Satellite Monitoring APIs",
+    "description": "Complete API testing collection for Indian farmer-focused satellite monitoring system",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api/gee",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_auth_token_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🌱 Crop Health Monitoring (NDVI)",
+      "item": [
+        {
+          "name": "✅ NDVI Analysis - Recent Data (30 days)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startMonth\": \"2025-07-30\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [77.2090, 28.6139],\n      [77.2290, 28.6139],\n      [77.2290, 28.6339],\n      [77.2090, 28.6339],\n      [77.2090, 28.6139]\n    ]]\n  },\n  \"thresholds\": {\n    \"low\": 0.3,\n    \"drop\": 0.2,\n    \"high\": 0.8,\n    \"radar\": {\n      \"low\": 0.2,\n      \"high\": 0.7\n    }\n  },\n  \"useRadar\": true,\n  \"cloudFilter\": 50,\n  \"enableFusion\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ndvi",
+              "host": ["{{base_url}}"],
+              "path": ["ndvi"]
+            },
+            "description": "Test NDVI analysis with recent data (last 30 days) using multi-source fusion"
+          },
+          "response": []
+        },
+        {
+          "name": "🌧️ NDVI Analysis - Monsoon Period (90 days)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startMonth\": \"2025-06-01\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [72.8777, 19.0760],\n      [72.8977, 19.0760],\n      [72.8977, 19.0960],\n      [72.8777, 19.0960],\n      [72.8777, 19.0760]\n    ]]\n  },\n  \"thresholds\": {\n    \"low\": 0.25,\n    \"drop\": 0.15,\n    \"high\": 0.75\n  },\n  \"useRadar\": true,\n  \"cloudFilter\": 70,\n  \"enableFusion\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ndvi",
+              "host": ["{{base_url}}"],
+              "path": ["ndvi"]
+            },
+            "description": "Test NDVI during monsoon with higher cloud tolerance and radar backup"
+          },
+          "response": []
+        },
+        {
+          "name": "❌ NDVI Analysis - Error Cases",
+          "item": [
+            {
+              "name": "Missing Parameters",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startMonth\": \"2025-08-01\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/ndvi",
+                  "host": ["{{base_url}}"],
+                  "path": ["ndvi"]
+                },
+                "description": "Test error handling for missing required parameters"
+              },
+              "response": []
+            },
+            {
+              "name": "Invalid Date Range",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startMonth\": \"2025-08-30\",\n  \"endMonth\": \"2025-08-01\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [77.2090, 28.6139],\n      [77.2290, 28.6139],\n      [77.2290, 28.6339],\n      [77.2090, 28.6339],\n      [77.2090, 28.6139]\n    ]]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/ndvi",
+                  "host": ["{{base_url}}"],
+                  "path": ["ndvi"]
+                },
+                "description": "Test error handling for invalid date range (start > end)"
+              },
+              "response": []
+            },
+            {
+              "name": "Invalid Polygon",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startMonth\": \"2025-08-01\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [77.2090, 28.6139]\n    ]]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/ndvi",
+                  "host": ["{{base_url}}"],
+                  "path": ["ndvi"]
+                },
+                "description": "Test error handling for invalid polygon (insufficient coordinates)"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🌾 Soil Mapping & Fertilizer Recommendations",
+      "item": [
+        {
+          "name": "✅ Soil Analysis - Complete Assessment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"2025-07-01\",\n  \"endDate\": \"2025-08-30\",\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [78.9629, 20.5937],\n      [78.9829, 20.5937],\n      [78.9829, 20.6137],\n      [78.9629, 20.6137],\n      [78.9629, 20.5937]\n    ]]\n  },\n  \"thresholds\": {\n    \"ph\": { \"min\": 5.5, \"max\": 7.5 },\n    \"organicCarbon\": 10,\n    \"soilMoisture\": 0.15,\n    \"N\": 0.2,\n    \"P\": 15,\n    \"K\": 150\n  },\n  \"messages\": {\n    \"ph\": \"⚠️ मिट्टी का pH स्तर अनुकूल नहीं है ({min}-{max})\",\n    \"organicCarbon\": \"⚠️ कार्बनिक कार्बन कम है (< {threshold})\",\n    \"soilMoisture\": \"⚠️ मिट्टी में नमी कम है (< {threshold})\",\n    \"N\": \"⚠️ नाइट्रोजन {threshold}% से कम है\",\n    \"P\": \"⚠️ फास्फोरस {threshold} mg/kg से कम है\",\n    \"K\": \"⚠️ पोटैशियम {threshold} mg/kg से कम है\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/soil-mapping-fertilizer",
+              "host": ["{{base_url}}"],
+              "path": ["soil-mapping-fertilizer"]
+            },
+            "description": "Complete soil analysis with Hindi messages for Indian farmers"
+          },
+          "response": []
+        },
+        {
+          "name": "🌱 Soil Advisory - Polygon Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"2025-08-01\",\n  \"endDate\": \"2025-08-30\",\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [75.7873, 26.9124],\n      [75.8073, 26.9124],\n      [75.8073, 26.9324],\n      [75.7873, 26.9324],\n      [75.7873, 26.9124]\n    ]]\n  },\n  \"cropType\": \"wheat\",\n  \"season\": \"rabi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/soil-polygon-advisory",
+              "host": ["{{base_url}}"],
+              "path": ["soil-polygon-advisory"]
+            },
+            "description": "Soil advisory for specific crop and season"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🌍 Productivity Zoning",
+      "item": [
+        {
+          "name": "✅ Productivity Analysis - Weighted Scoring",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [73.8567, 18.5204],\n      [73.8767, 18.5204],\n      [73.8767, 18.5404],\n      [73.8567, 18.5404],\n      [73.8567, 18.5204]\n    ]]\n  },\n  \"startDate\": \"2025-06-01\",\n  \"endDate\": \"2025-08-30\",\n  \"weights\": {\n    \"ndvi\": 0.4,\n    \"soil\": 0.3,\n    \"moisture\": 0.2,\n    \"slope\": 0.1\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/productivity-zoning",
+              "host": ["{{base_url}}"],
+              "path": ["productivity-zoning"]
+            },
+            "description": "Productivity zoning with custom weights for different factors"
+          },
+          "response": []
+        },
+        {
+          "name": "🌾 Productivity Analysis - Default Weights",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [80.2707, 13.0827],\n      [80.2907, 13.0827],\n      [80.2907, 13.1027],\n      [80.2707, 13.1027],\n      [80.2707, 13.0827]\n    ]]\n  },\n  \"startDate\": \"2025-07-01\",\n  \"endDate\": \"2025-08-30\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/productivity-zoning",
+              "host": ["{{base_url}}"],
+              "path": ["productivity-zoning"]
+            },
+            "description": "Productivity zoning using default weight configuration"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💧 Soil Moisture & Rainfall",
+      "item": [
+        {
+          "name": "✅ Soil Moisture Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"2025-08-01\",\n  \"endDate\": \"2025-08-30\",\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [88.3639, 22.5726],\n      [88.3839, 22.5726],\n      [88.3839, 22.5926],\n      [88.3639, 22.5926],\n      [88.3639, 22.5726]\n    ]]\n  },\n  \"includeRainfall\": true,\n  \"includeForecast\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/soil-rainfall-data",
+              "host": ["{{base_url}}"],
+              "path": ["soil-rainfall-data"]
+            },
+            "description": "Soil moisture analysis with rainfall data and forecast"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📈 Crop Growth Monitoring",
+      "item": [
+        {
+          "name": "✅ Crop Growth Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startDate\": \"2025-06-01\",\n  \"endDate\": \"2025-08-30\",\n  \"region\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [85.8245, 20.2961],\n      [85.8445, 20.2961],\n      [85.8445, 20.3161],\n      [85.8245, 20.3161],\n      [85.8245, 20.2961]\n    ]]\n  },\n  \"cropType\": \"rice\",\n  \"growthStage\": \"vegetative\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crop-growth",
+              "host": ["{{base_url}}"],
+              "path": ["crop-growth"]
+            },
+            "description": "Crop growth monitoring for specific crop type and growth stage"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🧪 API Testing Scenarios",
+      "item": [
+        {
+          "name": "🌾 Complete Farm Analysis - Punjab Wheat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startMonth\": \"2025-07-01\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [74.7973, 31.6340],\n      [74.8173, 31.6340],\n      [74.8173, 31.6540],\n      [74.7973, 31.6540],\n      [74.7973, 31.6340]\n    ]]\n  },\n  \"thresholds\": {\n    \"low\": 0.25,\n    \"drop\": 0.15,\n    \"high\": 0.75\n  },\n  \"useRadar\": true,\n  \"cloudFilter\": 60,\n  \"enableFusion\": true,\n  \"cropType\": \"wheat\",\n  \"season\": \"rabi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ndvi",
+              "host": ["{{base_url}}"],
+              "path": ["ndvi"]
+            },
+            "description": "Complete analysis for Punjab wheat farming with monsoon considerations"
+          },
+          "response": []
+        },
+        {
+          "name": "🌾 Complete Farm Analysis - Maharashtra Cotton",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startMonth\": \"2025-06-01\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [75.7873, 19.8762],\n      [75.8073, 19.8762],\n      [75.8073, 19.8962],\n      [75.7873, 19.8962],\n      [75.7873, 19.8762]\n    ]]\n  },\n  \"thresholds\": {\n    \"low\": 0.3,\n    \"drop\": 0.2,\n    \"high\": 0.8\n  },\n  \"useRadar\": true,\n  \"cloudFilter\": 70,\n  \"enableFusion\": true,\n  \"cropType\": \"cotton\",\n  \"season\": \"kharif\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ndvi",
+              "host": ["{{base_url}}"],
+              "path": ["ndvi"]
+            },
+            "description": "Complete analysis for Maharashtra cotton farming with high cloud tolerance"
+          },
+          "response": []
+        },
+        {
+          "name": "🌾 Complete Farm Analysis - Tamil Nadu Rice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startMonth\": \"2025-07-01\",\n  \"endMonth\": \"2025-08-30\",\n  \"polygon\": {\n    \"type\": \"Polygon\",\n    \"coordinates\": [[\n      [80.2707, 13.0827],\n      [80.2907, 13.0827],\n      [80.2907, 13.1027],\n      [80.2707, 13.1027],\n      [80.2707, 13.0827]\n    ]]\n  },\n  \"thresholds\": {\n    \"low\": 0.35,\n    \"drop\": 0.25,\n    \"high\": 0.85\n  },\n  \"useRadar\": true,\n  \"cloudFilter\": 50,\n  \"enableFusion\": true,\n  \"cropType\": \"rice\",\n  \"season\": \"kharif\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ndvi",
+              "host": ["{{base_url}}"],
+              "path": ["ndvi"]
+            },
+            "description": "Complete analysis for Tamil Nadu rice farming with optimal thresholds"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set default headers for all requests",
+          "pm.request.headers.add({\n    key: 'User-Agent',\n    value: 'ZUM-Agro-Vision-API-Tester/1.0'\n});",
+          "",
+          "// Log request details",
+          "console.log('🌱 Making request to:', pm.request.url);",
+          "console.log('📅 Request method:', pm.request.method);",
+          "console.log('📊 Request body:', pm.request.body?.raw || 'No body');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Test response structure",
+          "pm.test('✅ Response is JSON', function () {",
+          "    pm.response.to.have.jsonBody();",
+          "});",
+          "",
+          "pm.test('✅ Response has success field', function () {",
+          "    const jsonData = pm.response.json();",
+          "    pm.expect(jsonData).to.have.property('success');",
+          "});",
+          "",
+          "pm.test('✅ Response time is acceptable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(30000); // 30 seconds",
+          "});",
+          "",
+          "// Test specific endpoints",
+          "if (pm.request.url.path.includes('/ndvi')) {",
+          "    pm.test('🌱 NDVI API - Check response structure', function () {",
+          "        const jsonData = pm.response.json();",
+          "        if (jsonData.success) {",
+          "            pm.expect(jsonData).to.have.property('results');",
+          "            pm.expect(jsonData).to.have.property('alerts');",
+          "            pm.expect(jsonData).to.have.property('thresholds');",
+          "        }",
+          "    });",
+          "}",
+          "",
+          "if (pm.request.url.path.includes('/soil-mapping-fertilizer')) {",
+          "    pm.test('🌾 Soil API - Check response structure', function () {",
+          "        const jsonData = pm.response.json();",
+          "        if (jsonData.success) {",
+          "            pm.expect(jsonData).to.have.property('results');",
+          "            pm.expect(jsonData).to.have.property('recommendations');",
+          "        }",
+          "    });",
+          "}",
+          "",
+          "if (pm.request.url.path.includes('/productivity-zoning')) {",
+          "    pm.test('🌍 Productivity API - Check response structure', function () {",
+          "        const jsonData = pm.response.json();",
+          "        if (jsonData.success) {",
+          "            pm.expect(jsonData).to.have.property('zones');",
+          "            pm.expect(jsonData).to.have.property('scores');",
+          "        }",
+          "    });",
+          "}",
+          "",
+          "// Log response details",
+          "console.log('📊 Response status:', pm.response.status);",
+          "console.log('⏱️ Response time:', pm.response.responseTime + 'ms');",
+          "console.log('📄 Response body:', pm.response.text());"
+        ]
+      }
+    }
+  ]
+}
