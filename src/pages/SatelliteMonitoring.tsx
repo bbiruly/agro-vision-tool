@@ -1,7 +1,6 @@
 import Navigation from "@/components/Navigation"
 import LocationSearchField from "@/components/LocationSearchField"
 import MapAreaSelector from "@/components/MapAreaSelector"
-import NDVIMapVisualization from "@/components/NDVIMapVisualization"
 import DataValidationDashboard from "@/components/DataValidationDashboard"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -134,7 +133,10 @@ const LocationSelectionCard = ({
   currentLocation, 
   handleLocationSelect, 
   handleAreaSelect, 
-  mapboxToken 
+  mapboxToken,
+  ndviData,
+  isLoadingNDVI,
+  onRefreshNDVI
 }: {
   activeTab: 'predefined' | 'custom';
   selectedFieldId: string;
@@ -156,6 +158,72 @@ const LocationSelectionCard = ({
     area: number;
   }) => void;
   mapboxToken: string;
+  ndviData?: {
+    success: boolean;
+    results: Array<{
+      month: string;
+      ndvi: number;
+      stdDev: number;
+      dataSource: string;
+      indexType: string;
+      imageCount: {
+        sentinel2: number;
+        sentinel1: number;
+        modis: number;
+        total: number;
+      };
+      dataQuality: string;
+    }>;
+    alerts: Array<{
+      month: string;
+      type: string;
+      severity: string;
+      message: string;
+      dataSource: string;
+      indexType: string;
+      value: number;
+      threshold: number;
+    }>;
+    thresholds: {
+      low: number;
+      drop: number;
+      high: number;
+      radar: {
+        low: number;
+        high: number;
+      };
+    };
+    metadata: {
+      request: {
+        startMonth: string;
+        endMonth: string;
+        useRadar: boolean;
+        cloudFilter: number;
+        enableFusion: boolean;
+      };
+      coverage: {
+        totalMonths: number;
+        monthsWithData: number;
+        coveragePercentage: string;
+        sourceBreakdown: Record<string, number>;
+        qualityBreakdown: {
+          high: number;
+          medium: number;
+          low: number;
+          none: number;
+        };
+      };
+      dataSources: {
+        primary: string;
+        backup: string;
+        fallback: string;
+        fusion: string;
+      };
+      advantages: string[];
+    };
+  } | null;
+  isLoadingNDVI?: boolean;
+  onRefreshNDVI?: () => void;
 }) => (
   <Card className="shadow-medium border-2 border-gradient-to-r from-blue-100 to-purple-100">
     <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50 border-b">
@@ -238,6 +306,9 @@ const LocationSelectionCard = ({
               location={currentLocation}
               onAreaSelect={handleAreaSelect}
               mapboxToken={mapboxToken}
+              ndviData={ndviData}
+              isLoadingNDVI={isLoadingNDVI}
+              onRefreshNDVI={onRefreshNDVI}
             />
           </div>
         </TabsContent>
@@ -586,6 +657,12 @@ const SatelliteMonitoring = () => {
             handleLocationSelect={handleLocationSelect}
             handleAreaSelect={handleAreaSelect}
             mapboxToken={mapboxToken}
+            ndviData={ndviData}
+            isLoadingNDVI={isLoadingNDVI}
+            onRefreshNDVI={() => {
+              setLastFetchedFieldId(null);
+              setNdviData(null);
+            }}
           />
 
           {/* Enhanced Field Information Cards */}
@@ -593,7 +670,7 @@ const SatelliteMonitoring = () => {
             <FieldInfoCards selectedField={selectedField} ndviData={ndviData} />
           )}
 
-          {/* NDVI Visualization */}
+          {/* Loading and Error States */}
           {selectedField && (
             <>
               {isLoadingNDVI && (
@@ -611,15 +688,6 @@ const SatelliteMonitoring = () => {
                     setLastFetchedFieldId(null);
                     setNdviData(null);
                   }} 
-                />
-              )}
-              
-              {ndviData && !isLoadingNDVI && !ndviError && (
-                <NDVIMapVisualization 
-                  ndviData={ndviData}
-                  selectedField={selectedField}
-                  mapboxToken={mapboxToken}
-                  isLoading={isLoadingNDVI}
                 />
               )}
             </>
