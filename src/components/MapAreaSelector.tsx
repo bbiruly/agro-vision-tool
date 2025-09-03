@@ -320,7 +320,7 @@ const MapAreaSelector: React.FC<MapAreaSelectorProps> = ({
   useEffect(() => {
     if (!map.current || !ndviData || !ndviData.success || !selectedArea) return;
 
-    const results = ndviData.results;
+    const results = ndviData?.ndvi?.results;
     if (!results || results.length === 0) return;
 
     // Remove existing NDVI layers if any
@@ -634,7 +634,7 @@ const MapAreaSelector: React.FC<MapAreaSelectorProps> = ({
                   <SelectValue placeholder="Choose month for NDVI analysis" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ndviData.results.map((result) => (
+                  {ndviData?.ndvi?.results?.map((result) => (
                     <SelectItem key={result.month} value={result.month}>
                       <div className="flex items-center justify-between w-full">
                         <span>{result.month}</span>
@@ -709,7 +709,7 @@ const MapAreaSelector: React.FC<MapAreaSelectorProps> = ({
                   </Badge>
                 </div>
                 {(() => {
-                  const monthData = ndviData.results.find(r => r.month === selectedMonth);
+                  const monthData = ndviData?.ndvi?.results?.find(r => r.month === selectedMonth);
                   return monthData ? (
                     <div className="mt-2 space-y-1 text-sm text-green-700">
                       <div>NDVI: <span className="font-mono font-semibold">{monthData.ndvi?.toFixed(3) || 'N/A'}</span></div>

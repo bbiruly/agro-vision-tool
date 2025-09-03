@@ -3,7 +3,7 @@ import axios from "axios";
 // Create axios instance
 const api = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_API_URL || "http://localhost:5000/api", // backend URL
-  timeout: 10000,
+  timeout: 120000, // Increased to 2 minutes for satellite data processing
 });
 
 // Request Interceptor

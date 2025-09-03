@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 
 import fetcherAPI from '../api/fetcher'
+import { NDVIData } from '../types/ndvi'
 
 // Enhanced Field Info Cards Component
 const FieldInfoCards = ({ selectedField, ndviData }: { 
@@ -40,20 +41,71 @@ const FieldInfoCards = ({ selectedField, ndviData }: {
   } | null; 
   ndviData: {
     success: boolean;
-    results: Array<{
-      month: string;
-      ndvi: number;
-      stdDev: number;
-      dataSource: string;
-      indexType: string;
-      imageCount: {
-        sentinel2: number;
-        sentinel1: number;
-        modis: number;
-        total: number;
+    ndvi: {
+      results: Array<{
+        month: string;
+        ndvi: number;
+        stdDev: number;
+        dataSource: string;
+        indexType: string;
+        imageCount: {
+          sentinel2: number;
+          sentinel1: number;
+          modis: number;
+          total: number;
+        };
+        dataQuality: string;
+      }>;
+      alerts: Array<{
+        month: string;
+        type: string;
+        severity: string;
+        message: string;
+        dataSource: string;
+        indexType: string;
+        value: number;
+        threshold: number;
+      }>;
+      thresholds: {
+        low: number;
+        drop: number;
+        high: number;
+        radar: {
+          low: number;
+          high: number;
+        };
       };
-      dataQuality: string;
-    }>;
+      coverage: {
+        totalMonths: number;
+        monthsWithData: number;
+        coveragePercentage: string;
+        sourceBreakdown: Record<string, number>;
+        qualityBreakdown: {
+          high: number;
+          medium: number;
+          low: number;
+          none: number;
+        };
+      };
+    };
+    waterBalance: any;
+    metadata: {
+      request: {
+        startMonth: string;
+        endMonth: string;
+        useRadar: boolean;
+        cloudFilter: number;
+        enableFusion: boolean;
+      };
+      dataSources: {
+        primary: string;
+        backup: string;
+        fallback: string;
+        fusion: string;
+      };
+      advantages: string[];
+    };
+    fallbackWarning?: string;
   } | null; 
 }) => (
   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -108,8 +160,8 @@ const FieldInfoCards = ({ selectedField, ndviData }: {
           <div>
             <p className="text-sm font-medium text-orange-600">Latest Update</p>
             <p className="text-lg font-bold text-orange-800">
-              {ndviData?.results.length > 0 
-                ? ndviData.results[ndviData.results.length - 1].month
+              {ndviData?.ndvi?.results?.length > 0 
+                ? ndviData.ndvi.results[ndviData.ndvi.results.length - 1].month
                 : 'Aug 19'
               }
             </p>
@@ -161,46 +213,39 @@ const LocationSelectionCard = ({
   mapboxToken: string;
   ndviData?: {
     success: boolean;
-    results: Array<{
-      month: string;
-      ndvi: number;
-      stdDev: number;
-      dataSource: string;
-      indexType: string;
-      imageCount: {
-        sentinel2: number;
-        sentinel1: number;
-        modis: number;
-        total: number;
-      };
-      dataQuality: string;
-    }>;
-    alerts: Array<{
-      month: string;
-      type: string;
-      severity: string;
-      message: string;
-      dataSource: string;
-      indexType: string;
-      value: number;
-      threshold: number;
-    }>;
-    thresholds: {
-      low: number;
-      drop: number;
-      high: number;
-      radar: {
+    ndvi: {
+      results: Array<{
+        month: string;
+        ndvi: number;
+        stdDev: number;
+        dataSource: string;
+        indexType: string;
+        imageCount: {
+          sentinel2: number;
+          sentinel1: number;
+          modis: number;
+          total: number;
+        };
+        dataQuality: string;
+      }>;
+      alerts: Array<{
+        month: string;
+        type: string;
+        severity: string;
+        message: string;
+        dataSource: string;
+        indexType: string;
+        value: number;
+        threshold: number;
+      }>;
+      thresholds: {
         low: number;
+        drop: number;
         high: number;
-      };
-    };
-    metadata: {
-      request: {
-        startMonth: string;
-        endMonth: string;
-        useRadar: boolean;
-        cloudFilter: number;
-        enableFusion: boolean;
+        radar: {
+          low: number;
+          high: number;
+        };
       };
       coverage: {
         totalMonths: number;
@@ -214,6 +259,16 @@ const LocationSelectionCard = ({
           none: number;
         };
       };
+    };
+    waterBalance: any;
+    metadata: {
+      request: {
+        startMonth: string;
+        endMonth: string;
+        useRadar: boolean;
+        cloudFilter: number;
+        enableFusion: boolean;
+      };
       dataSources: {
         primary: string;
         backup: string;
@@ -222,6 +277,7 @@ const LocationSelectionCard = ({
       };
       advantages: string[];
     };
+    fallbackWarning?: string;
   } | null;
   isLoadingNDVI?: boolean;
   onRefreshNDVI?: () => void;
@@ -337,6 +393,15 @@ const LoadingCard = ({ message, fieldName }: { message: string; fieldName: strin
         <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
         <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
       </div>
+      <div className="mt-6 p-4 bg-blue-100 rounded-lg">
+        <p className="text-sm text-blue-800 font-medium">⏱️ Processing Time</p>
+        <p className="text-xs text-blue-600 mt-1">
+          Satellite data analysis typically takes 1-3 minutes. Please don't refresh or navigate away.
+        </p>
+        <p className="text-xs text-blue-500 mt-2">
+          We're processing multiple data sources (Sentinel-2, Sentinel-1, MODIS) for comprehensive analysis.
+        </p>
+      </div>
     </CardContent>
   </Card>
 );
@@ -381,71 +446,7 @@ const SatelliteMonitoring = () => {
   const [activeTab, setActiveTab] = useState<'predefined' | 'custom'>('predefined');
   
   // NDVI data state
-  const [ndviData, setNdviData] = useState<{
-    success: boolean;
-    results: Array<{
-      month: string;
-      ndvi: number;
-      stdDev: number;
-      dataSource: string;
-      indexType: string;
-      imageCount: {
-        sentinel2: number;
-        sentinel1: number;
-        modis: number;
-        total: number;
-      };
-      dataQuality: string;
-    }>;
-    alerts: Array<{
-      month: string;
-      type: string;
-      severity: string;
-      message: string;
-      dataSource: string;
-      indexType: string;
-      value: number;
-      threshold: number;
-    }>;
-    thresholds: {
-      low: number;
-      drop: number;
-      high: number;
-      radar: {
-        low: number;
-        high: number;
-      };
-    };
-    metadata: {
-      request: {
-        startMonth: string;
-        endMonth: string;
-        useRadar: boolean;
-        cloudFilter: number;
-        enableFusion: boolean;
-      };
-      coverage: {
-        totalMonths: number;
-        monthsWithData: number;
-        coveragePercentage: string;
-        sourceBreakdown: Record<string, number>;
-        qualityBreakdown: {
-          high: number;
-          medium: number;
-          low: number;
-          none: number;
-        };
-      };
-      dataSources: {
-        primary: string;
-        backup: string;
-        fallback: string;
-        fusion: string;
-      };
-      advantages: string[];
-    };
-    fallbackWarning?: string; // Added for progressive fallback
-  } | null>(null);
+  const [ndviData, setNdviData] = useState<NDVIData | null>(null);
   const [isLoadingNDVI, setIsLoadingNDVI] = useState(false);
   const [ndviError, setNdviError] = useState<string | null>(null);
   const [lastFetchedFieldId, setLastFetchedFieldId] = useState<string | null>(null);
@@ -569,6 +570,9 @@ const SatelliteMonitoring = () => {
           ]],
         };
 
+        console.log("🔄 Processing satellite data... This may take 1-3 minutes for comprehensive analysis.");
+        console.log("⏱️ Request timeout set to 3 minutes to accommodate processing time.");
+
         // ✅ Enhanced API call with recent data and radar capabilities
         const res = await fetcherAPI({
           method: "POST",
@@ -660,9 +664,32 @@ const SatelliteMonitoring = () => {
         console.log("✅ Backend Response:", res);
         setNdviData(res);
         setLastFetchedFieldId(selectedField.id);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("❌ Error fetching NDVI:", err);
-        setNdviError(err instanceof Error ? err.message : 'Failed to fetch NDVI data');
+        
+        // Check if this is a 404 with helpful backend error message
+        if (err && typeof err === 'object' && 'response' in err) {
+          const axiosError = err as { response?: { status?: number; data?: { error?: string; suggestions?: string[] } } };
+          
+          if (axiosError.response?.status === 404 && axiosError.response?.data?.error) {
+            const backendError = axiosError.response.data;
+            console.log("🔍 Backend provided helpful error:", backendError);
+            
+            // Use the backend's helpful error message and suggestions
+            setNdviError(backendError.error);
+            
+            // Log suggestions for debugging
+            if (backendError.suggestions) {
+              console.log("💡 Backend suggestions:", backendError.suggestions);
+            }
+          } else {
+            // Fallback to generic error message
+            setNdviError('Failed to fetch NDVI data');
+          }
+        } else {
+          // Fallback to generic error message
+          setNdviError(err instanceof Error ? err.message : 'Failed to fetch NDVI data');
+        }
       } finally {
         setIsLoadingNDVI(false);
       }

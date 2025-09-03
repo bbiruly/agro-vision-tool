@@ -321,7 +321,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
     } />;
   }
 
-  if (!ndviData.success || !ndviData.results || !Array.isArray(ndviData.results) || ndviData.results.length === 0) {
+      if (!ndviData.success || !ndviData.ndvi?.results || !Array.isArray(ndviData.ndvi.results) || ndviData.ndvi.results.length === 0) {
     return <ErrorCard message="Invalid or empty NDVI data structure" />;
   }
 
@@ -401,7 +401,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
 
   // Update NDVI visualization when data changes
   useEffect(() => {
-    if (!map.current || !mapLoaded || !ndviData || !ndviData.results || !ndviData.results.length) return;
+    if (!map.current || !mapLoaded || !ndviData || !ndviData.ndvi?.results || !ndviData.ndvi.results.length) return;
 
     const updateNDVILayer = () => {
       try {
@@ -416,7 +416,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
 
         const geojsonData = {
           type: 'FeatureCollection',
-          features: ndviData.results.map(result => ({
+          features: ndviData.ndvi.results.map(result => ({
             type: 'Feature',
             geometry: result.geometry,
             properties: { ...result.properties, id: result.id }
@@ -441,9 +441,9 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
           }
         });
 
-        if (!selectedMonth && ndviData.results.length > 0) {
-          setSelectedMonth(ndviData.results[ndviData.results.length - 1].month);
-        }
+              if (!selectedMonth && ndviData.ndvi.results.length > 0) {
+        setSelectedMonth(ndviData.ndvi.results[ndviData.ndvi.results.length - 1].month);
+      }
       } catch (error) {
         console.error('Error updating NDVI visualization:', error);
       }
@@ -504,7 +504,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
               <SelectValue placeholder="Select Month" />
             </SelectTrigger>
             <SelectContent>
-              {ndviData.results.map((result, index) => (
+                              {ndviData.ndvi.results.map((result, index) => (
                 <SelectItem key={`${result.month}-${index}`} value={result.month}>
                   {result.month} (NDVI: {result.ndvi.toFixed(3)})
                 </SelectItem>
@@ -545,7 +545,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
 
         {/* Monthly Summary */}
         <MonthlySummary 
-          results={ndviData.results} 
+                        results={ndviData.ndvi.results} 
           getNDVIColor={getNDVIColor} 
           getNDVICategory={getNDVICategory} 
         />
@@ -554,7 +554,7 @@ const NDVIMapVisualization: React.FC<NDVIMapVisualizationProps> = ({
         {ndviData.alerts?.length > 0 && <AlertsSection alerts={ndviData.alerts} />}
 
         {/* Debug Info */}
-        <DebugInfo results={ndviData.results} />
+                    <DebugInfo results={ndviData.ndvi.results} />
 
         {/* Thresholds Info */}
         {ndviData.thresholds && <ThresholdsInfo thresholds={ndviData.thresholds} />}

@@ -53,24 +53,17 @@ interface AlertData {
 interface ValidationDashboardProps {
   ndviData: {
     success: boolean;
-    results: ValidationData[];
-    alerts: AlertData[];
-    thresholds: {
-      low: number;
-      drop: number;
-      high: number;
-      radar: {
+    ndvi: {
+      results: ValidationData[];
+      alerts: AlertData[];
+      thresholds: {
         low: number;
+        drop: number;
         high: number;
-      };
-    };
-    metadata: {
-      request: {
-        startMonth: string;
-        endMonth: string;
-        useRadar: boolean;
-        cloudFilter: number;
-        enableFusion: boolean;
+        radar: {
+          low: number;
+          high: number;
+        };
       };
       coverage: {
         totalMonths: number;
@@ -83,6 +76,41 @@ interface ValidationDashboardProps {
           low: number;
           none: number;
         };
+      };
+    };
+    waterBalance: {
+      timeSeries: {
+        type: string;
+        features: Array<{
+          properties: {
+            ET: number;
+            P: number;
+            WB: number;
+            month: number;
+            year: number;
+          };
+        }>;
+      };
+      visParam: {
+        opacity: number;
+        bands: string[];
+        min: number;
+        max: number;
+        palette: string[];
+      };
+      geometry: any;
+      period: {
+        startYear: string;
+        endYear: string;
+      };
+    };
+    metadata: {
+      request: {
+        startMonth: string;
+        endMonth: string;
+        useRadar: boolean;
+        cloudFilter: number;
+        enableFusion: boolean;
       };
       dataSources: {
         primary: string;
@@ -116,7 +144,8 @@ const DataValidationDashboard: React.FC<ValidationDashboardProps> = ({
     );
   }
 
-  const { results, alerts, thresholds, metadata } = ndviData;
+  const { ndvi, waterBalance, metadata } = ndviData;
+  const { results, alerts, thresholds, coverage } = ndvi;
   
   // Safety check for results
   if (!results || !Array.isArray(results) || results.length === 0) {
@@ -277,17 +306,18 @@ const DataValidationDashboard: React.FC<ValidationDashboardProps> = ({
 
       {/* Main Validation Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="quality">Data Quality</TabsTrigger>
           <TabsTrigger value="patterns">Growth Patterns</TabsTrigger>
           <TabsTrigger value="alerts">Alerts & Issues</TabsTrigger>
+          <TabsTrigger value="waterBalance">Water Balance</TabsTrigger>
           <TabsTrigger value="metadata">Metadata</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Data Quality Summary */}
             <Card className="shadow-elegant">
               <CardHeader>
@@ -346,6 +376,42 @@ const DataValidationDashboard: React.FC<ValidationDashboardProps> = ({
                       </div>
                     ))}
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Water Balance Summary */}
+            <Card className="shadow-elegant">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                  Water Balance Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span>Analysis Period:</span>
+                  <span className="text-xs font-mono">
+                    {waterBalance?.period?.startYear?.split('-')[0]} to {waterBalance?.period?.endYear?.split('-')[0]}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Total Months:</span>
+                  <Badge variant="outline">
+                    {waterBalance?.timeSeries?.features?.length || 0}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Data Available:</span>
+                  <Badge variant="default">
+                    {waterBalance?.timeSeries?.features?.filter(f => f.properties.P > 0 || f.properties.ET > 0).length || 0} months
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Latest WB:</span>
+                  <Badge variant="secondary">
+                    {waterBalance?.timeSeries?.features?.find(f => f.properties.WB !== 0)?.properties.WB?.toFixed(1) || 'N/A'} mm
+                  </Badge>
                 </div>
               </CardContent>
             </Card>
@@ -541,6 +607,119 @@ const DataValidationDashboard: React.FC<ValidationDashboardProps> = ({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Water Balance Tab */}
+        <TabsContent value="waterBalance" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Water Balance Summary */}
+            <Card className="shadow-elegant">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                  Water Balance Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between">
+                  <span>Analysis Period:</span>
+                  <span className="font-mono text-sm">
+                    {waterBalance?.period?.startYear} to {waterBalance?.period?.endYear}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Months:</span>
+                  <Badge variant="outline">
+                    {waterBalance?.timeSeries?.features?.length || 0}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span>Data Available:</span>
+                  <Badge variant="default">
+                    {waterBalance?.timeSeries?.features?.filter(f => f.properties.P > 0 || f.properties.ET > 0).length || 0} months
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Monthly Water Balance Chart */}
+            <Card className="shadow-elegant">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-green-600" />
+                  Monthly Water Balance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-48 flex items-center justify-center">
+                  {waterBalance?.timeSeries?.features ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={waterBalance.timeSeries.features.map(f => ({
+                        month: f.properties.month,
+                        Precipitation: f.properties.P,
+                        Evapotranspiration: f.properties.ET,
+                        WaterBalance: f.properties.WB
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="Precipitation" stackId="1" stroke="#8884d8" fill="#8884d8" />
+                        <Area type="monotone" dataKey="Evapotranspiration" stackId="1" stroke="#82ca9d" fill="#82ca9d" />
+                        <Area type="monotone" dataKey="WaterBalance" stroke="#ffc658" fill="#ffc658" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No water balance data available</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Monthly Details */}
+            <Card className="shadow-elegant md:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-purple-600" />
+                  Monthly Water Balance Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {waterBalance?.timeSeries?.features?.map((feature, index) => {
+                    const { P, ET, WB, month, year } = feature.properties;
+                    return (
+                      <div key={index} className="border rounded-lg p-3">
+                        <div className="text-center">
+                          <div className="font-semibold text-sm">{year}-{month.toString().padStart(2, '0')}</div>
+                          <div className="space-y-1 mt-2 text-xs">
+                            <div className="flex justify-between">
+                              <span>Precipitation:</span>
+                              <span className="font-mono">{P.toFixed(1)} mm</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Evapotranspiration:</span>
+                              <span className="font-mono">{ET.toFixed(1)} mm</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Water Balance:</span>
+                              <span className={`font-mono ${WB > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {WB.toFixed(1)} mm
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }) || (
+                    <div className="col-span-3 text-center text-sm text-muted-foreground">
+                      No water balance data available
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Metadata Tab */}
